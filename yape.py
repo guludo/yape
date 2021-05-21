@@ -26,6 +26,11 @@ class Pipeline:
         self.id2unit[unit.id] = unit
         self.units.add(unit)
 
+    def unit(self, **kw):
+        unit = Unit(**kw)
+        self.add_unit(unit)
+        return unit
+
 
 class Unit:
     def __init__(self,
