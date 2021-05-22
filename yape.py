@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import json
 import pathlib
+import shutil
 
 
 class Pipeline:
@@ -245,7 +246,13 @@ class PipelineWorkspace:
                 unit_ws.id = ws_id
                 unit_ws.path = self.path / 'uws' / ws_id
 
+    def garbage_collect(self):
+        active_ids = set(unit_ws.id for unit_ws in self.unit_workspaces.values())
+        all_ids = set(p.name for p in (self.path / 'uws').glob('*'))
 
+        to_remove = all_ids - active_ids
+        for ws_id in to_remove:
+            shutil.rmtree(self.path / 'uws' / ws_id)
 
 
 class PipelineRunner:
