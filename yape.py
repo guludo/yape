@@ -52,6 +52,8 @@ class Pipeline:
                     r.add(self.output2unit[dep])
             elif isinstance(dep, Unit):
                 r.add(dep)
+            elif isinstance(dep, UnitResultDep):
+                r.add(dep.unit)
         return r
 
     def topological_sort(self, targets=None):
@@ -148,7 +150,9 @@ class Pipeline:
         for name, dep in unit.deps.items():
             if isinstance(dep, pathlib.Path):
                 h.update(str(dep).encode())
-            elif isinstance(dep, Unit):
+            elif isinstance(dep, (Unit, UnitResultDep)):
+                if isinstance(dep, UnitResultDep):
+                    dep = dep.unit
                 h.update(self.__calc_unit_hash(dep, cache).encode())
             else:
                 raise Exception('unhandled unit workspace dependency type: {type(dep)}')
@@ -204,6 +208,12 @@ class Unit:
                 dep = {'type': 'path', 'path': str(dep)}
             elif isinstance(dep, Unit):
                 dep = {'type': 'unit', 'hash': dep.hash}
+            elif isinstance(dep, UnitResultDep):
+                dep = {
+                    'type': 'unit_result',
+                    'unit_hash': dep.unit.hash,
+                    'result_name': dep.name,
+                }
             else:
                 raise Exception('invalid unit dependency type: {type(dep)}')
             r[name] = dep
@@ -211,6 +221,15 @@ class Unit:
 
     def __str__(self):
         return f'<{getattr(self.runner, "__name__", "")}:{self.id}>'
+
+    def result(self, name):
+        return UnitResultDep(self, name)
+
+
+class UnitResultDep:
+    def __init__(self, unit, name):
+        self.unit = unit
+        self.name = name
 
 
 class UnitStateNamespace:
@@ -261,15 +280,18 @@ class UnitState:
                 t = datetime.datetime.fromtimestamp(dep.stat().st_mtime)
                 if t > self.state['timestamp']:
                     return True
-            elif isinstance(dep, Unit):
+            elif isinstance(dep, (Unit, UnitResultDep)):
+                dep_unit = dep if isinstance(dep, Unit) else dep.unit
                 try:
-                    dep_state = self.namespace.get_unit_state(dep)
+                    dep_state = self.namespace.get_unit_state(dep_unit)
                 except KeyError:
                     raise Exception(f'{self.unit}: state for dependency unit {dep} not found' )
                 if dep_state.is_outdated():
                     return True
                 if dep_state.state['timestamp'] > self.state['timestamp']:
                     return True
+            else:
+                raise Exception(f'unhandled unit dependency type: {type(dep)}')
 
         return False
 
@@ -371,6 +393,9 @@ class UnitRunnerContext:
             return dep
         elif isinstance(dep, Unit):
             return self.__unit_state.namespace.get_unit_state(dep)
+        elif isinstance(dep, UnitResultDep):
+            dep_state = self.__unit_state.namespace.get_unit_state(dep.unit)
+            return dep_state.get_result(dep.name)
         else:
             self.error(f'unhandled dependency type for "{name}": {type(dep)}')
 
