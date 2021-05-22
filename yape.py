@@ -50,6 +50,60 @@ class Pipeline:
                 r.add(dep)
         return r
 
+    def topological_sort(self, targets=None):
+        """
+        Return a list of all units to be executed based on target units. Units
+        that are direct or indirect dependencies of each target is also added.
+        The list is sorted in topological order based on the dependencies.
+        """
+        if targets is None:
+            targets = list(self.units)
+
+        visited = set()
+        visiting = set()
+        execution_list = []
+        path = []
+        stack = [(unit, None) for unit in targets]
+        while stack:
+            unit, state = stack.pop()
+
+            if state is None:
+                if unit in visited:
+                    # This unit and dependencies have already been added to the
+                    # execution list
+                    continue
+
+                path.append(unit)
+
+                if unit in visiting:
+                    # If I am still visiting this unit, this means a circular
+                    # dependency has been found
+                    path_ids = [unit.id for u in path]
+                    path_ids.reverse()
+                    raise Exception(f'circular dependency found between units: {" <- ".join(path_ids)}')
+
+                # Get unit-type dependencies and push back to stack and mark
+                # unit as visiting
+                deps = list(self.get_unit_type_deps(unit))
+                stack.append((unit, deps))
+                visiting.add(unit)
+            else:
+                deps = state
+                # If there are no more dependencies to be added to the
+                # execution list, the unit is ready to be added. If not, then
+                # add the next unit to the stack.
+                if not deps:
+                    execution_list.append(unit)
+                    visited.add(unit)
+                    visiting.remove(unit)
+                    path.pop()
+                else:
+                    dep = deps.pop()
+                    stack.append((unit, deps))
+                    stack.append((dep, None))
+
+        return execution_list
+
 
 class Unit:
     def __init__(self,
@@ -268,7 +322,7 @@ class PipelineRunner:
 
         targets = self.__parse_targets(targets)
         target_set = set(targets)
-        execution_list = self.__get_execution_list(targets)
+        execution_list = self.pl.topological_sort(targets)
 
         for unit in execution_list:
             unit_ws = self.workspace.unit_workspaces[unit]
@@ -313,54 +367,3 @@ class PipelineRunner:
 
             targets[i] = target
         return targets
-
-    def __get_execution_list(self, targets):
-        """
-        Return a list of all units to be executed based on target units. Units
-        that are direct or indirect dependencies of each target is also added.
-        The list is sorted in topological order based on the dependencies.
-        """
-        visited = set()
-        visiting = set()
-        execution_list = []
-        path = []
-        stack = [(unit, None) for unit in targets]
-        while stack:
-            unit, state = stack.pop()
-
-            if state is None:
-                if unit in visited:
-                    # This unit and dependencies have already been added to the
-                    # execution list
-                    continue
-
-                path.append(unit)
-
-                if unit in visiting:
-                    # If I am still visiting this unit, this means a circular
-                    # dependency has been found
-                    path_ids = [unit.id for u in path]
-                    path_ids.reverse()
-                    raise Exception(f'circular dependency found between units: {" <- ".join(path_ids)}')
-
-                # Get unit-type dependencies and push back to stack and mark
-                # unit as visiting
-                deps = list(self.pl.get_unit_type_deps(unit))
-                stack.append((unit, deps))
-                visiting.add(unit)
-            else:
-                deps = state
-                # If there are no more dependencies to be added to the
-                # execution list, the unit is ready to be added. If not, then
-                # add the next unit to the stack.
-                if not deps:
-                    execution_list.append(unit)
-                    visited.add(unit)
-                    visiting.remove(unit)
-                    path.pop()
-                else:
-                    dep = deps.pop()
-                    stack.append((unit, deps))
-                    stack.append((dep, None))
-
-        return execution_list
