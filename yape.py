@@ -126,9 +126,9 @@ class Unit:
         for name, path in self.outputs.items():
             self.outputs[name] = pathlib.Path(path)
 
-    def run(self, unit_ws):
+    def run(self, ctx):
         if callable(self.runner):
-            self.runner(unit_ws)
+            self.runner(ctx)
         else:
             raise Exception(f'no callable runner available for {self}')
 
@@ -280,6 +280,38 @@ class UnitWorkspace:
         return False
 
 
+class UnitRunnerContext:
+    def __init__(self, unit_ws):
+        self.__unit_ws = unit_ws
+
+    @property
+    def unit(self):
+        return self.__unit_ws.unit
+
+    @property
+    def params(self):
+        return self.unit.params
+
+    @property
+    def workdir(self):
+        return self.__unit_ws.workdir()
+
+    def error(self, msg):
+        raise Exception(f'{self.unit}: {msg}')
+
+    def dep(self, name):
+        if name not in self.__unit_ws.deps:
+            self.error(f'missing dependency "{name}" for unit {self.unit}')
+
+        dep = self.__unit_ws.deps[name]
+        if isinstance(dep, pathlib.Path):
+            return dep
+        elif isinstance(dep, UnitWorkspace):
+            return dep
+        else:
+            self.error(f'unhandled dependency type for "{name}": {type(dep)}')
+
+
 class PipelineWorkspace:
     def __init__(self, pl, path):
         pl.topological_sort() # Make sure there are no cycles
@@ -342,7 +374,8 @@ class PipelineRunner:
             unit_ws = self.workspace.unit_workspaces[unit]
             if always_run or unit_ws.is_outdated():
                 try:
-                    unit.run(unit_ws)
+                    ctx = UnitRunnerContext(unit_ws)
+                    unit.run(ctx)
                 except Exception as e:
                     unit_ws.update_state(
                         params=unit.params,
