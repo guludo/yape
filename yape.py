@@ -144,6 +144,8 @@ class UnitWorkspace:
         self.id = None
         self.path = None
         self.deps = None
+        self.params = unit.params
+        self.outputs = unit.outputs
 
         self.__state = None
         self.__hash = None
