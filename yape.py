@@ -150,6 +150,12 @@ class UnitWorkspace:
         self.__state = None
         self.__hash = None
 
+    def workdir(self):
+        if self.path:
+            return self.path / 'workdir'
+        else:
+            return None
+
     def hash(self):
         if self.__hash:
             return self.__hash
