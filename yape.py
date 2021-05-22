@@ -113,6 +113,7 @@ class Unit:
         params=None,
         info=None,
         outputs=None,
+        always=False,
     ):
         self.id = id
         self.runner = runner
@@ -120,6 +121,7 @@ class Unit:
         self.deps = deps or {}
         self.info = info
         self.outputs = outputs or {}
+        self.always = always
 
         for name, path in self.outputs.items():
             self.outputs[name] = pathlib.Path(path)
@@ -240,6 +242,9 @@ class UnitWorkspace:
 
 
     def is_outdated(self):
+        if self.unit.always:
+            return True
+
         state = self.state()
         if state['last_execution'] is None:
             return True
