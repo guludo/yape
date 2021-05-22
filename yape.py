@@ -269,6 +269,7 @@ class UnitWorkspace:
 
 class PipelineWorkspace:
     def __init__(self, pl, path):
+        pl.topological_sort() # Make sure there are no cycles
         self.path = pathlib.Path(path)
         self.pl = pl
         self.unit_workspaces = {}
