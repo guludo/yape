@@ -53,13 +53,13 @@ class Unit:
         runner,
         id=None,
         dependencies=None,
-        runner_conf=None,
+        params=None,
         info=None,
         outputs=None,
     ):
         self.id = id
         self.runner = runner
-        self.runner_conf = runner_conf
+        self.params = params
         self.dependencies = dependencies or {}
         self.info = info
         self.outputs = outputs or {}
@@ -113,7 +113,7 @@ class UnitWorkspace:
             'success': None,
             'error_string': None,
             'runner': None,
-            'runner_conf': None,
+            'params': None,
             'dependencies': None,
         }
 
@@ -158,7 +158,7 @@ class UnitWorkspace:
         if self.unit.runner != state['runner']:
             return True
 
-        if self.unit.runner_conf != state['runner_conf']:
+        if self.unit.params != state['params']:
             return True
 
         if self.unit.dependencies_to_dict() != state['dependencies']:
@@ -229,7 +229,7 @@ class PipelineRunner:
                 except Exception as e:
                     unit_ws.update_state(
                         runner=unit.runner,
-                        runner_conf=unit.runner_conf,
+                        params=unit.params,
                         success=False,
                         last_execution=None,
                         error_string=str(e),
@@ -238,7 +238,7 @@ class PipelineRunner:
                 else:
                     unit_ws.update_state(
                         runner=unit.runner,
-                        runner_conf=unit.runner_conf,
+                        params=unit.params,
                         success=True,
                         last_execution=datetime.datetime.now(),
                         error_string=None,
