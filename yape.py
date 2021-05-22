@@ -177,6 +177,8 @@ class UnitWorkspace:
 
         state['deps'] = self.unit.deps_to_dict()
 
+        state['runner'] = getattr(self.unit.runner, '__name__', '')
+
         state_path = self.path / 'state.json'
         state_path.parent.mkdir(exist_ok=True, parents=True)
         state_path.write_text(json.dumps(state))
