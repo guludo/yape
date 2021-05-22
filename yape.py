@@ -50,7 +50,7 @@ class Pipeline:
 
 class Unit:
     def __init__(self,
-        runner,
+        runner=None,
         id=None,
         dependencies=None,
         params=None,
@@ -79,17 +79,14 @@ class Unit:
             r[name] = dep
         return r
 
+    def run(self, unit_ws):
+        if callable(self.runner):
+            self.runner(unit_ws)
+        else:
+            raise Exception(f'no callable runner available for {self}')
+
     def __str__(self):
-        return f'<{self.runner}:{self.id}>'
-
-
-class UnitRunner:
-    runner_registry = {}
-
-    @classmethod
-    def __init_subclass__(cls, **kw):
-        cls.__name__
-        UnitRunner.runner_registry[cls.__name__] = cls
+        return f'<{getattr(self.runner, "__name__", "")}:{self.id}>'
 
 
 class UnitWorkspace:
@@ -112,7 +109,6 @@ class UnitWorkspace:
             'last_execution': None,
             'success': None,
             'error_string': None,
-            'runner': None,
             'params': None,
             'dependencies': None,
         }
@@ -153,9 +149,6 @@ class UnitWorkspace:
             return True
 
         if not state['success']:
-            return True
-
-        if self.unit.runner != state['runner']:
             return True
 
         if self.unit.params != state['params']:
@@ -215,20 +208,9 @@ class PipelineRunner:
             unit_ws = self.workspace.unit_workspace(unit)
             if always_run or unit_ws.is_outdated():
                 try:
-                    runner_cls = UnitRunner.runner_registry[unit.runner]
-                except KeyError:
-                    error_msg = f'runner "{unit.runner}" not found. Available runners: '
-                    error_msg += ",".join(UnitRunner.runner_registry)
-                    raise Exception(error_msg)
-
-                runner = runner_cls()
-                runner.unit = unit
-                runner.workspace = unit_ws
-                try:
-                    runner.run()
+                    unit.run(unit_ws)
                 except Exception as e:
                     unit_ws.update_state(
-                        runner=unit.runner,
                         params=unit.params,
                         success=False,
                         last_execution=None,
@@ -237,7 +219,6 @@ class PipelineRunner:
                     raise e
                 else:
                     unit_ws.update_state(
-                        runner=unit.runner,
                         params=unit.params,
                         success=True,
                         last_execution=datetime.datetime.now(),
