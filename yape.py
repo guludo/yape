@@ -69,18 +69,6 @@ class Unit:
         for name, path in self.outputs.items():
             self.outputs[name] = pathlib.Path(path)
 
-    def deps_to_dict(self):
-        r = {}
-        for name, dep in self.deps.items():
-            if isinstance(dep, pathlib.Path):
-                dep = {'type': 'path', 'path': str(dep)}
-            elif isinstance(dep, Unit):
-                dep = {'type': 'unit', 'id': dep.id}
-            else:
-                raise Exception('invalid unit dependency type: {type(dep)}')
-            r[name] = dep
-        return r
-
     def run(self, unit_ws):
         if callable(self.runner):
             self.runner(unit_ws)
@@ -175,13 +163,26 @@ class UnitWorkspace:
         if state['last_execution']:
             state['last_execution'] = state['last_execution'].isoformat()
 
-        state['deps'] = self.unit.deps_to_dict()
+        state['deps'] = self.deps_to_dict()
 
         state['runner'] = getattr(self.unit.runner, '__name__', '')
 
         state_path = self.path / 'state.json'
         state_path.parent.mkdir(exist_ok=True, parents=True)
         state_path.write_text(json.dumps(state))
+
+    def deps_to_dict(self):
+        r = {}
+        for name, dep in self.deps.items():
+            if isinstance(dep, pathlib.Path):
+                dep = {'type': 'path', 'path': str(dep)}
+            elif isinstance(dep, UnitWorkspace):
+                dep = {'type': 'unit_ws', 'id': dep.id}
+            else:
+                raise Exception('invalid unit dependency type: {type(dep)}')
+            r[name] = dep
+        return r
+
 
     def is_outdated(self):
         state = self.state()
@@ -194,7 +195,7 @@ class UnitWorkspace:
         if self.unit.params != state['params']:
             return True
 
-        if self.unit.deps_to_dict() != state['deps']:
+        if self.deps_to_dict() != state['deps']:
             return True
 
         for name, dep in self.deps.items():
