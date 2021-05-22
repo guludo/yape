@@ -9,12 +9,18 @@ import pathlib
 class Pipeline:
     def __init__(self):
         self.id2unit = {}
+        self.output2unit = {}
         self.units = set()
         self.__unit_id_seq = 0
 
     def add_unit(self, unit):
         if unit.id and unit.id in self.id2unit:
             raise Exception(f'there is already a unit with the id "{unit.id}"')
+
+        for output in unit.outputs.values():
+            if output in self.output2unit:
+                raise Exception('more than one unit declaring to produce "{output}": {unit} and {self.output2unit[output]}')
+            self.output2unit[output] = unit
 
         if unit in self.units:
             return
@@ -31,6 +37,16 @@ class Pipeline:
         self.add_unit(unit)
         return unit
 
+    def get_unit_type_dependencies(self, unit):
+        r = set()
+        for dep in unit.dependencies.values():
+            if isinstance(dep, pathlib.Path):
+                if dep in self.output2unit:
+                    r.add(self.output2unit[dep])
+            elif isinstance(dep, Unit):
+                r.add(dep)
+        return r
+
 
 class Unit:
     def __init__(self,
@@ -39,12 +55,17 @@ class Unit:
         dependencies=None,
         runner_conf=None,
         info=None,
+        outputs=None,
     ):
         self.id = id
         self.runner = runner
         self.runner_conf = runner_conf
         self.dependencies = dependencies or {}
         self.info = info
+        self.outputs = outputs or {}
+
+        for name, path in self.outputs.items():
+            self.outputs[name] = pathlib.Path(path)
 
     def dependencies_to_dict(self):
         r = {}
@@ -275,12 +296,9 @@ class PipelineRunner:
                     path_ids.reverse()
                     raise Exception(f'circular dependency found between units: {" <- ".join(path_ids)}')
 
-                # Find all dependencies and push back to stack and mark unit as
-                # visiting
-                deps = [
-                    dep for dep in unit.dependencies.values()
-                    if isinstance(dep, Unit)
-                ]
+                # Get unit-type dependencies and push back to stack and mark
+                # unit as visiting
+                deps = list(self.pl.get_unit_type_dependencies(unit))
                 stack.append((unit, deps))
                 visiting.add(unit)
             else:
