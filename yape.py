@@ -197,124 +197,159 @@ class Unit:
         else:
             raise Exception(f'no callable runner available for {self}')
 
-    def __str__(self):
-        return f'<{getattr(self.runner, "__name__", "")}:{self.id}>'
-
-
-class UnitWorkspace:
-    def __init__(self, unit):
-        self.unit = unit
-
-        # These properties are set by PipelineWorkspace later
-        self.path = None
-        self.deps = None
-
-        self.params = unit.params
-        self.outputs = unit.outputs
-
-        self.__state = None
-
-    def workdir(self):
-        if self.path:
-            return self.path / 'workdir'
-        else:
-            return None
-
-    def state(self):
-        if self.__state is not None:
-            return self.__state
-
-        self.__state = {
-            'last_execution': None,
-            'success': None,
-            'error_string': None,
-            'params': None,
-            'deps': None,
-        }
-
-        state_path = self.path / 'state.json'
-        if not state_path.exists():
-            return self.__state
-
-        self.__state = json.loads(state_path.read_text())
-
-        if self.__state['last_execution']:
-            t = datetime.datetime.fromisoformat(self.__state['last_execution'])
-            self.__state['last_execution'] = t
-
-        return self.__state
-
-    def update_state(self, **kw):
-        for k in self.state():
-            if k in kw:
-                self.__state[k] = kw[k]
-        self.save_state()
-
-    def save_state(self):
-        state = dict(self.state())
-
-        if state['last_execution']:
-            state['last_execution'] = state['last_execution'].isoformat()
-
-        state['deps'] = self.deps_to_dict()
-
-        state['runner'] = getattr(self.unit.runner, '__name__', '')
-
-        state_path = self.path / 'state.json'
-        state_path.parent.mkdir(exist_ok=True, parents=True)
-        state_path.write_text(json.dumps(state))
-
     def deps_to_dict(self):
         r = {}
         for name, dep in self.deps.items():
             if isinstance(dep, pathlib.Path):
                 dep = {'type': 'path', 'path': str(dep)}
-            elif isinstance(dep, UnitWorkspace):
-                dep = {'type': 'unit_ws', 'hash': dep.unit.hash}
+            elif isinstance(dep, Unit):
+                dep = {'type': 'unit', 'hash': dep.hash}
             else:
                 raise Exception('invalid unit dependency type: {type(dep)}')
             r[name] = dep
         return r
 
+    def __str__(self):
+        return f'<{getattr(self.runner, "__name__", "")}:{self.id}>'
+
+
+class UnitStateNamespace:
+    def __init__(self, factory=None):
+        self.__states = {}
+        self.factory = factory or InMemoryUnitState
+
+    def get_unit_state(self, unit):
+        if unit in self.__states:
+            return self.__states[unit]
+        self.__states[unit] = self.factory(unit, self)
+        return self.__states[unit]
+
+
+class UnitState:
+    def __init__(self, unit, namespace, **kw):
+        self.unit = unit
+        self.namespace = namespace
+        self.state = {
+            'success': None,
+            'timestamp': None,
+            'error_string': None,
+            'params': None,
+            'deps': None,
+        }
+        self.kw = kw
+        self.load_state()
+        self.__result = {}
 
     def is_outdated(self):
         if self.unit.always:
             return True
 
-        state = self.state()
-        if state['last_execution'] is None:
+        if self.state['timestamp'] is None:
             return True
 
-        if not state['success']:
+        if not self.state['success']:
             return True
 
-        if self.unit.params != state['params']:
+        if self.unit.params != self.state['params']:
             return True
 
-        if self.deps_to_dict() != state['deps']:
+        if self.unit.deps_to_dict() != self.state['deps']:
             return True
 
-        for name, dep in self.deps.items():
+        for name, dep in self.unit.deps.items():
             if isinstance(dep, pathlib.Path):
                 t = datetime.datetime.fromtimestamp(dep.stat().st_mtime)
-                if t > state['last_execution']:
+                if t > self.state['timestamp']:
                     return True
-            elif isinstance(dep, UnitWorkspace):
-                if dep.is_outdated():
+            elif isinstance(dep, Unit):
+                try:
+                    dep_state = self.namespace.get_unit_state(dep)
+                except KeyError:
+                    raise Exception(f'{self.unit}: state for dependency unit {dep} not found' )
+                if dep_state.is_outdated():
                     return True
-                if dep.state()['last_execution'] > state['last_execution']:
+                if dep_state.state['timestamp'] > self.state['timestamp']:
                     return True
 
         return False
 
+    def set_result(self, name, value):
+        self.__result[name] = value
+
+    def get_result(self, name):
+        return self.__result[name]
+
+    def commit(self, **kw):
+        self.state.update(kw)
+        self.state['params'] = self.unit.params
+        self.state['deps'] = self.unit.deps_to_dict()
+        self.state['timestamp'] = datetime.datetime.now()
+        self.save_state()
+
+    def save_state(self):
+        pass
+
+    def load_state(self):
+        pass
+
+    def workdir(self):
+        return None
+
+
+class InMemoryUnitState(UnitState):
+    pass
+
+
+class FSUnitState(UnitState):
+    class Workspace:
+        def __init__(self, path):
+            self.path = pathlib.Path(path)
+
+        def __call__(self, unit, namespace):
+            return FSUnitState(unit, namespace, path=self.path / unit.hash)
+
+        def garbage_collect(self, units):
+            active_hashes = set(unit.hash for unit in units)
+            all_hashes = set(p.name for p in self.path.glob('*'))
+
+            to_remove = all_hashes - active_hashes
+            for h in to_remove:
+                shutil.rmtree(self.path / h)
+
+    def save_state(self):
+        state = dict(self.state)
+
+        if state['timestamp']:
+            state['timestamp'] = state['timestamp'].isoformat()
+
+        state_path = self.kw['path'] / 'state.json'
+        state_path.parent.mkdir(exist_ok=True, parents=True)
+        state_path.write_text(json.dumps(state))
+
+    def load_state(self):
+        state_path = self.kw['path'] / 'state.json'
+        if not state_path.exists():
+            return
+
+        state = json.loads(state_path.read_text())
+        if state['timestamp']:
+            t = datetime.datetime.fromisoformat(state['timestamp'])
+            state['timestamp'] = t
+        self.state = state
+
+    def workdir(self):
+        p = self.path / 'workdir'
+        p.mkdir(exist_ok=True, parents=True)
+        return p
+
 
 class UnitRunnerContext:
-    def __init__(self, unit_ws):
-        self.__unit_ws = unit_ws
+    def __init__(self, unit_state):
+        self.__unit_state = unit_state
 
     @property
     def unit(self):
-        return self.__unit_ws.unit
+        return self.__unit_state.unit
 
     @property
     def params(self):
@@ -322,60 +357,31 @@ class UnitRunnerContext:
 
     @property
     def workdir(self):
-        return self.__unit_ws.workdir()
+        return self.__unit_state.workdir()
 
     def error(self, msg):
         raise Exception(f'{self.unit}: {msg}')
 
     def dep(self, name):
-        if name not in self.__unit_ws.deps:
+        if name not in self.unit.deps:
             self.error(f'missing dependency "{name}" for unit {self.unit}')
 
-        dep = self.__unit_ws.deps[name]
+        dep = self.unit.deps[name]
         if isinstance(dep, pathlib.Path):
             return dep
-        elif isinstance(dep, UnitWorkspace):
-            return dep
+        elif isinstance(dep, Unit):
+            return self.__unit_state.namespace.get_unit_state(dep)
         else:
             self.error(f'unhandled dependency type for "{name}": {type(dep)}')
 
 
-class PipelineWorkspace:
-    def __init__(self, pl, path):
-        pl.calculate_hashes()
-        self.path = pathlib.Path(path)
-        self.pl = pl
-        self.unit_workspaces = {}
-
-        for unit in pl.units:
-            unit_ws = UnitWorkspace(unit)
-            self.unit_workspaces[unit] = unit_ws
-            unit_ws.path = self.path / 'uws' / unit.hash
-
-        # Convert dependencies
-        for unit_ws in self.unit_workspaces.values():
-            unit_ws.deps = dict(unit_ws.unit.deps)
-            for name, dep in unit_ws.deps.items():
-                if isinstance(dep, Unit):
-                    unit_ws.deps[name] = self.unit_workspaces[dep]
-
-    def garbage_collect(self):
-        active_hashes = set(unit_ws.unit.hash for unit_ws in self.unit_workspaces.values())
-        all_hashes = set(p.name for p in (self.path / 'uws').glob('*'))
-
-        to_remove = all_hashes - active_hashes
-        for h in to_remove:
-            shutil.rmtree(self.path / 'uws' / h)
-
-
 class PipelineRunner:
-    def __init__(self, pl, workspace):
-        self.workspace = PipelineWorkspace(pl, workspace)
+    def __init__(self, pl, ns=None):
+        self.ns = ns or UnitStateNamespace()
         self.pl = pl
 
     def run(self, targets=None, always_run=False):
-        self.workspace.path.mkdir(parents=True, exist_ok=True)
-
+        self.pl.calculate_hashes()
         if targets is None:
             targets = list(self.pl.units)
 
@@ -384,25 +390,23 @@ class PipelineRunner:
         execution_list = self.pl.topological_sort(targets)
 
         for unit in execution_list:
-            unit_ws = self.workspace.unit_workspaces[unit]
-            if always_run or unit_ws.is_outdated():
+            unit_state = self.ns.get_unit_state(unit)
+            if always_run or unit_state.is_outdated():
                 try:
-                    ctx = UnitRunnerContext(unit_ws)
-                    unit.run(ctx)
+                    ctx = UnitRunnerContext(unit_state)
+                    result = unit.run(ctx)
+                    if result:
+                        for name, value in result:
+                            unit.set_result(name, value)
                 except Exception as e:
-                    unit_ws.update_state(
-                        params=unit.params,
+                    unit_state.commit(
                         success=False,
-                        last_execution=None,
                         error_string=str(e),
                     )
                     raise e
                 else:
-                    unit_ws.update_state(
-                        params=unit.params,
+                    unit_state.commit(
                         success=True,
-                        last_execution=datetime.datetime.now(),
-                        error_string=None,
                     )
             else:
                 if unit in target_set:
