@@ -37,9 +37,9 @@ class Pipeline:
         self.add_unit(unit)
         return unit
 
-    def get_unit_type_dependencies(self, unit):
+    def get_unit_type_deps(self, unit):
         r = set()
-        for dep in unit.dependencies.values():
+        for dep in unit.deps.values():
             if isinstance(dep, pathlib.Path):
                 if dep in self.output2unit:
                     r.add(self.output2unit[dep])
@@ -52,7 +52,7 @@ class Unit:
     def __init__(self,
         runner=None,
         id=None,
-        dependencies=None,
+        deps=None,
         params=None,
         info=None,
         outputs=None,
@@ -60,16 +60,16 @@ class Unit:
         self.id = id
         self.runner = runner
         self.params = params
-        self.dependencies = dependencies or {}
+        self.deps = deps or {}
         self.info = info
         self.outputs = outputs or {}
 
         for name, path in self.outputs.items():
             self.outputs[name] = pathlib.Path(path)
 
-    def dependencies_to_dict(self):
+    def deps_to_dict(self):
         r = {}
-        for name, dep in self.dependencies.items():
+        for name, dep in self.deps.items():
             if isinstance(dep, pathlib.Path):
                 dep = {'type': 'path', 'path': str(dep)}
             elif isinstance(dep, Unit):
@@ -93,10 +93,10 @@ class UnitWorkspace:
     def __init__(self, unit, pipeline_ws):
         self.unit = unit
 
-        self.dependencies = dict(unit.dependencies)
-        for name, dep in self.dependencies.items():
+        self.deps = dict(unit.deps)
+        for name, dep in self.deps.items():
             if isinstance(dep, Unit):
-                self.dependencies[name] = pipeline_ws.unit_workspace(dep)
+                self.deps[name] = pipeline_ws.unit_workspace(dep)
 
         self.path = pipeline_ws.unit_path(unit)
         self.__state = None
@@ -110,7 +110,7 @@ class UnitWorkspace:
             'success': None,
             'error_string': None,
             'params': None,
-            'dependencies': None,
+            'deps': None,
         }
 
         state_path = self.path / 'state.json'
@@ -137,7 +137,7 @@ class UnitWorkspace:
         if state['last_execution']:
             state['last_execution'] = state['last_execution'].isoformat()
 
-        state['dependencies'] = self.unit.dependencies_to_dict()
+        state['deps'] = self.unit.deps_to_dict()
 
         state_path = self.path / 'state.json'
         state_path.parent.mkdir(exist_ok=True, parents=True)
@@ -154,10 +154,10 @@ class UnitWorkspace:
         if self.unit.params != state['params']:
             return True
 
-        if self.unit.dependencies_to_dict() != state['dependencies']:
+        if self.unit.deps_to_dict() != state['deps']:
             return True
 
-        for name, dep in self.dependencies.items():
+        for name, dep in self.deps.items():
             if isinstance(dep, pathlib.Path):
                 t = datetime.datetime.fromtimestamp(dep.stat().st_mtime)
                 if t > state['last_execution']:
@@ -279,7 +279,7 @@ class PipelineRunner:
 
                 # Get unit-type dependencies and push back to stack and mark
                 # unit as visiting
-                deps = list(self.pl.get_unit_type_dependencies(unit))
+                deps = list(self.pl.get_unit_type_deps(unit))
                 stack.append((unit, deps))
                 visiting.add(unit)
             else:
