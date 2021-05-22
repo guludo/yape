@@ -1,7 +1,9 @@
 """
 TODO: Document this.
 """
+import collections
 import datetime
+import hashlib
 import json
 import pathlib
 
@@ -90,16 +92,52 @@ class Unit:
 
 
 class UnitWorkspace:
-    def __init__(self, unit, pipeline_ws):
+    def __init__(self, unit):
         self.unit = unit
 
-        self.deps = dict(unit.deps)
-        for name, dep in self.deps.items():
-            if isinstance(dep, Unit):
-                self.deps[name] = pipeline_ws.unit_workspace(dep)
+        # These properties are set by PipelineWorkspace later
+        self.id = None
+        self.path = None
+        self.deps = None
 
-        self.path = pipeline_ws.unit_path(unit)
         self.__state = None
+        self.__hash = None
+
+    def hash(self):
+        if self.__hash:
+            return self.__hash
+
+        h = hashlib.sha256()
+
+        # Hash parameters
+        params_json = json.dumps(self.__sorted_for_json(self.unit.params))
+        h.update(params_json.encode())
+
+        # Hash dependencies
+        for name, dep in self.deps.items():
+            if isinstance(dep, pathlib.Path):
+                h.update(str(dep).encode())
+            elif isinstance(dep, UnitWorkspace):
+                h.update(dep.hash().encode())
+            else:
+                raise Exception('unhandled unit workspace dependency type: {type(dep)}')
+
+        # TODO: consider hashing code as well
+
+        self.__hash = h.hexdigest()
+
+        return self.__hash
+
+    def __sorted_for_json(self, obj):
+        if isinstance(obj, dict):
+            return collections.OrderedDict(
+                (k, self.__sorted_for_json(obj[k]))
+                for k in sorted(obj.keys())
+            )
+        elif isinstance(obj, set):
+            return sorted(obj)
+        else:
+            return obj
 
     def state(self):
         if self.__state is not None:
@@ -177,16 +215,34 @@ class PipelineWorkspace:
         self.pl = pl
         self.unit_workspaces = {}
 
-    def unit_workspace(self, unit):
-        if unit in self.unit_workspaces:
-            return self.unit_workspaces[unit]
+        for unit in pl.units:
+            self.unit_workspaces[unit] = UnitWorkspace(unit)
 
-        w = UnitWorkspace(unit, self)
-        self.unit_workspaces[unit] = w
-        return w
+        # Convert dependencies
+        for unit_ws in self.unit_workspaces.values():
+            unit_ws.deps = dict(unit_ws.unit.deps)
+            for name, dep in unit_ws.deps.items():
+                if isinstance(dep, Unit):
+                    unit_ws.deps[name] = self.unit_workspaces[dep]
 
-    def unit_path(self, unit):
-        return self.path / 'units' / unit.id
+        # Generate unit workspace ids from hash values
+        hash2unit_ws = collections.defaultdict(list)
+        for unit_ws in self.unit_workspaces.values():
+            hash2unit_ws[unit_ws.hash()].append(unit_ws)
+
+        for h, l in hash2unit_ws.items():
+            ws_ids = [h]
+            if len(l) > 1:
+                # In case of collisions, lets use the unit id for
+                # disambiguation
+                # TODO: raise a warning here
+                ws_ids = [f'{h}-{unit_ws.unit.id}' for unit_ws in l]
+
+            for ws_id, unit_ws in zip(ws_ids, l):
+                unit_ws.id = ws_id
+                unit_ws.path = self.path / 'uws' / ws_id
+
+
 
 
 class PipelineRunner:
@@ -205,7 +261,7 @@ class PipelineRunner:
         execution_list = self.__get_execution_list(targets)
 
         for unit in execution_list:
-            unit_ws = self.workspace.unit_workspace(unit)
+            unit_ws = self.workspace.unit_workspaces[unit]
             if always_run or unit_ws.is_outdated():
                 try:
                     unit.run(unit_ws)
