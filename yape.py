@@ -15,8 +15,12 @@ class Pipeline:
         self.output2unit = {}
         self.units = set()
         self.__unit_id_seq = 0
+        self.__is_hashed = False
 
     def add_unit(self, unit):
+        if self.__is_hashed:
+            raise Exception('pipeline is already hashed, can not add more units')
+
         if unit.id and unit.id in self.id2unit:
             raise Exception(f'there is already a unit with the id "{unit.id}"')
 
@@ -104,6 +108,66 @@ class Pipeline:
 
         return execution_list
 
+    def calculate_hashes(self):
+        if self.__is_hashed:
+            return
+        # Ensure there are no cycles by doing a topological sort
+        self.topological_sort()
+
+        hash2unit_list = collections.defaultdict(list)
+        hash_cache = {}
+        for unit in self.units:
+            h = self.__calc_unit_hash(unit, hash_cache)
+            hash2unit_list[h].append(unit)
+
+        # Attach hash values to units.
+        for h, l in hash2unit_list.items():
+            hashes = [h]
+            # Solve collisions by appending the unit id.
+            if len(l) > 1:
+                # TODO: raise a warning here
+                hashes = [f'{h}-{unit.id}' for unit in l]
+            for h, unit in zip(hashes, l):
+                unit.hash = h
+
+        self.hash2unit = {unit.hash: unit for unit in self.units}
+
+        self.__is_hashed = True
+
+    def __calc_unit_hash(self, unit, cache):
+        if unit in cache:
+            return cache[unit]
+
+        h = hashlib.sha256()
+
+        # Hash parameters
+        params_json = json.dumps(self.__sorted_for_json(unit.params))
+        h.update(params_json.encode())
+
+        # Hash dependencies
+        for name, dep in unit.deps.items():
+            if isinstance(dep, pathlib.Path):
+                h.update(str(dep).encode())
+            elif isinstance(dep, Unit):
+                h.update(self.__calc_unit_hash(dep, cache).encode())
+            else:
+                raise Exception('unhandled unit workspace dependency type: {type(dep)}')
+
+        # TODO: consider hashing code as well
+
+        return h.hexdigest()
+
+    def __sorted_for_json(self, obj):
+        if isinstance(obj, dict):
+            return collections.OrderedDict(
+                (k, self.__sorted_for_json(obj[k]))
+                for k in sorted(obj.keys())
+            )
+        elif isinstance(obj, set):
+            return sorted(obj)
+        else:
+            return obj
+
 
 class Unit:
     def __init__(self,
@@ -116,6 +180,7 @@ class Unit:
         always=False,
     ):
         self.id = id
+        self.hash = None
         self.runner = runner
         self.params = params
         self.deps = deps or {}
@@ -141,56 +206,19 @@ class UnitWorkspace:
         self.unit = unit
 
         # These properties are set by PipelineWorkspace later
-        self.id = None
         self.path = None
         self.deps = None
+
         self.params = unit.params
         self.outputs = unit.outputs
 
         self.__state = None
-        self.__hash = None
 
     def workdir(self):
         if self.path:
             return self.path / 'workdir'
         else:
             return None
-
-    def hash(self):
-        if self.__hash:
-            return self.__hash
-
-        h = hashlib.sha256()
-
-        # Hash parameters
-        params_json = json.dumps(self.__sorted_for_json(self.unit.params))
-        h.update(params_json.encode())
-
-        # Hash dependencies
-        for name, dep in self.deps.items():
-            if isinstance(dep, pathlib.Path):
-                h.update(str(dep).encode())
-            elif isinstance(dep, UnitWorkspace):
-                h.update(dep.hash().encode())
-            else:
-                raise Exception('unhandled unit workspace dependency type: {type(dep)}')
-
-        # TODO: consider hashing code as well
-
-        self.__hash = h.hexdigest()
-
-        return self.__hash
-
-    def __sorted_for_json(self, obj):
-        if isinstance(obj, dict):
-            return collections.OrderedDict(
-                (k, self.__sorted_for_json(obj[k]))
-                for k in sorted(obj.keys())
-            )
-        elif isinstance(obj, set):
-            return sorted(obj)
-        else:
-            return obj
 
     def state(self):
         if self.__state is not None:
@@ -242,7 +270,7 @@ class UnitWorkspace:
             if isinstance(dep, pathlib.Path):
                 dep = {'type': 'path', 'path': str(dep)}
             elif isinstance(dep, UnitWorkspace):
-                dep = {'type': 'unit_ws', 'id': dep.id}
+                dep = {'type': 'unit_ws', 'hash': dep.unit.hash}
             else:
                 raise Exception('invalid unit dependency type: {type(dep)}')
             r[name] = dep
@@ -314,13 +342,15 @@ class UnitRunnerContext:
 
 class PipelineWorkspace:
     def __init__(self, pl, path):
-        pl.topological_sort() # Make sure there are no cycles
+        pl.calculate_hashes()
         self.path = pathlib.Path(path)
         self.pl = pl
         self.unit_workspaces = {}
 
         for unit in pl.units:
-            self.unit_workspaces[unit] = UnitWorkspace(unit)
+            unit_ws = UnitWorkspace(unit)
+            self.unit_workspaces[unit] = unit_ws
+            unit_ws.path = self.path / 'uws' / unit.hash
 
         # Convert dependencies
         for unit_ws in self.unit_workspaces.values():
@@ -329,30 +359,13 @@ class PipelineWorkspace:
                 if isinstance(dep, Unit):
                     unit_ws.deps[name] = self.unit_workspaces[dep]
 
-        # Generate unit workspace ids from hash values
-        hash2unit_ws = collections.defaultdict(list)
-        for unit_ws in self.unit_workspaces.values():
-            hash2unit_ws[unit_ws.hash()].append(unit_ws)
-
-        for h, l in hash2unit_ws.items():
-            ws_ids = [h]
-            if len(l) > 1:
-                # In case of collisions, lets use the unit id for
-                # disambiguation
-                # TODO: raise a warning here
-                ws_ids = [f'{h}-{unit_ws.unit.id}' for unit_ws in l]
-
-            for ws_id, unit_ws in zip(ws_ids, l):
-                unit_ws.id = ws_id
-                unit_ws.path = self.path / 'uws' / ws_id
-
     def garbage_collect(self):
-        active_ids = set(unit_ws.id for unit_ws in self.unit_workspaces.values())
-        all_ids = set(p.name for p in (self.path / 'uws').glob('*'))
+        active_hashes = set(unit_ws.unit.hash for unit_ws in self.unit_workspaces.values())
+        all_hashes = set(p.name for p in (self.path / 'uws').glob('*'))
 
-        to_remove = all_ids - active_ids
-        for ws_id in to_remove:
-            shutil.rmtree(self.path / 'uws' / ws_id)
+        to_remove = all_hashes - active_hashes
+        for h in to_remove:
+            shutil.rmtree(self.path / 'uws' / h)
 
 
 class PipelineRunner:
