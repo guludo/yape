@@ -505,7 +505,7 @@ class PipelineRunner:
                     )
             else:
                 if unit in target_set:
-                    print(f'{unit} is up to date')
+                    logger.info(f'{unit} is up to date')
 
 
     def __parse_targets(self, targets):
