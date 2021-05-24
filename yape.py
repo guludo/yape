@@ -360,7 +360,7 @@ class FSUnitState(UnitState):
         self.state = state
 
     def workdir(self):
-        p = self.path / 'workdir'
+        p = self.kw['path'] / 'workdir'
         p.mkdir(exist_ok=True, parents=True)
         return p
 
