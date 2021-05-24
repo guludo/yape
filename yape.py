@@ -140,7 +140,7 @@ class Pipeline:
             hashes = [h]
             # Solve collisions by appending the unit id.
             if len(l) > 1:
-                # TODO: raise a warning here
+                logging.warning(f'units [{", ".join(str(u) for u in l)}] have colliding hashes')
                 hashes = [f'{h}-{unit.id}' for unit in l]
             for h, unit in zip(hashes, l):
                 unit.hash = h
