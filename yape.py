@@ -12,7 +12,7 @@ import shutil
 class Pipeline:
     def __init__(self):
         self.id2unit = {}
-        self.output2unit = {}
+        self.pathout2unit = {}
         self.units = set()
         self.__unit_id_seq = 0
         self.__is_hashed = False
@@ -24,10 +24,14 @@ class Pipeline:
         if unit.id and unit.id in self.id2unit:
             raise Exception(f'there is already a unit with the id "{unit.id}"')
 
-        for output in unit.outputs.values():
-            if output in self.output2unit:
-                raise Exception('more than one unit declaring to produce "{output}": {unit} and {self.output2unit[output]}')
-            self.output2unit[output] = unit
+        # Check for PathOut instances
+        for v in unit.input_values():
+            if not isinstance(v, PathOut):
+                continue
+
+            if v in self.pathout2unit:
+                raise Exception('more than one unit declaring to produce "{output}": {unit} and {self.pathout2unit[output]}')
+            self.pathout2unit[v] = unit
 
         if unit in self.units:
             return
@@ -45,8 +49,8 @@ class Pipeline:
         return unit
 
     def __get_unit_dep(self, value):
-        if isinstance(value, pathlib.Path):
-            return self.output2unit.get(value, None)
+        if isinstance(value, PathIn):
+            return self.pathout2unit.get(PathOut(value), None)
         elif isinstance(value, Unit):
             return value
         elif isinstance(value, UnitResultDep):
@@ -143,6 +147,8 @@ class Pipeline:
     def __json_default(self, o):
         if isinstance(o, set):
             return sorted(o)
+        if isinstance(o, (PathIn, PathOut)):
+            return str(o)
         return str(o)
 
     def __calc_unit_hash(self, unit, cache):
@@ -167,7 +173,6 @@ class Unit:
         args=None,
         kw=None,
         info=None,
-        outputs=None,
         always=False,
     ):
         self.id = id
@@ -176,11 +181,7 @@ class Unit:
         self.args = args or tuple()
         self.kw = kw or {}
         self.info = info
-        self.outputs = outputs or {}
         self.always = always
-
-        for name, path in self.outputs.items():
-            self.outputs[name] = pathlib.Path(path)
 
     def run(self, ctx):
         args, kw = ctx.resolve_input(self.args, self.kw)
@@ -190,8 +191,10 @@ class Unit:
             raise Exception(f'no callable runner available for {self}')
 
     def __input_value_to_dict(self, value):
-        if isinstance(value, pathlib.Path):
-            return {'type': 'path', 'path': str(value)}
+        if isinstance(value, PathOut):
+            return {'type': 'pathout', 'path': str(value)}
+        elif isinstance(value, PathIn):
+            return {'type': 'pathin', 'path': str(value)}
         elif isinstance(value, Unit):
             return {'type': 'unit', 'hash': value.hash}
         elif isinstance(value, UnitResultDep):
@@ -223,6 +226,14 @@ class Unit:
 
     def result(self, name):
         return UnitResultDep(self, name)
+
+
+class PathIn(pathlib.PurePosixPath):
+    pass
+
+
+class PathOut(pathlib.PurePosixPath):
+    pass
 
 
 class UnitResultDep:
@@ -271,8 +282,9 @@ class UnitState:
             return True
 
         for value in self.unit.input_values():
-            if isinstance(value, pathlib.Path):
-                t = datetime.datetime.fromtimestamp(value.stat().st_mtime)
+            if isinstance(value, PathIn):
+                p = pathlib.Path(value)
+                t = datetime.datetime.fromtimestamp(p.stat().st_mtime)
                 if t > self.state['timestamp']:
                     return True
             elif isinstance(value, (Unit, UnitResultDep)):
@@ -373,13 +385,13 @@ class UnitRunnerContext:
         raise Exception(f'{self.unit}: {msg}')
 
     def __resolve_input_value(self, value):
-        if isinstance(value, pathlib.Path):
-            return value
-        elif isinstance(value, Unit):
+        if isinstance(value, Unit):
             return self.__unit_state.namespace.get_unit_state(value)
         elif isinstance(value, UnitResultDep):
             dep_state = self.__unit_state.namespace.get_unit_state(value.unit)
             return dep_state.get_result(value.name)
+        elif isinstance(value, (PathIn, PathOut)):
+            return pathlib.Path(value)
         else:
             return value
 
