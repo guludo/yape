@@ -44,17 +44,22 @@ class Pipeline:
         self.add_unit(unit)
         return unit
 
-    def get_unit_type_deps(self, unit):
-        r = set()
-        for dep in unit.deps.values():
-            if isinstance(dep, pathlib.Path):
-                if dep in self.output2unit:
-                    r.add(self.output2unit[dep])
-            elif isinstance(dep, Unit):
-                r.add(dep)
-            elif isinstance(dep, UnitResultDep):
-                r.add(dep.unit)
-        return r
+    def __get_unit_dep(self, value):
+        if isinstance(value, pathlib.Path):
+            return self.output2unit.get(value, None)
+        elif isinstance(value, Unit):
+            return value
+        elif isinstance(value, UnitResultDep):
+            return value.unit
+        return None
+
+    def unit_dependencies(self, unit):
+        return set(
+            dep
+            for dep in (
+                self.__get_unit_dep(v) for v in unit.input_values()
+            ) if dep
+        )
 
     def topological_sort(self, targets=None):
         """
@@ -90,8 +95,7 @@ class Pipeline:
 
                 # Get unit-type dependencies and push back to stack and mark
                 # unit as visiting
-                deps = list(self.get_unit_type_deps(unit))
-                stack.append((unit, deps))
+                stack.append((unit, list(self.unit_dependencies(unit))))
                 visiting.add(unit)
             else:
                 deps = state
@@ -136,49 +140,32 @@ class Pipeline:
 
         self.__is_hashed = True
 
+    def __json_default(self, o):
+        if isinstance(o, set):
+            return sorted(o)
+        return str(o)
+
     def __calc_unit_hash(self, unit, cache):
         if unit in cache:
             return cache[unit]
 
         h = hashlib.sha256()
 
-        # Hash parameters
-        params_json = json.dumps(self.__sorted_for_json(unit.params))
-        h.update(params_json.encode())
-
-        # Hash dependencies
-        for name, dep in unit.deps.items():
-            if isinstance(dep, pathlib.Path):
-                h.update(str(dep).encode())
-            elif isinstance(dep, (Unit, UnitResultDep)):
-                if isinstance(dep, UnitResultDep):
-                    dep = dep.unit
-                h.update(self.__calc_unit_hash(dep, cache).encode())
-            else:
-                raise Exception('unhandled unit workspace dependency type: {type(dep)}')
+        # Hash input
+        input_json = json.dumps(unit.input_to_dict(), default=self.__json_default)
+        h.update(input_json.encode())
 
         # TODO: consider hashing code as well
 
         return h.hexdigest()
-
-    def __sorted_for_json(self, obj):
-        if isinstance(obj, dict):
-            return collections.OrderedDict(
-                (k, self.__sorted_for_json(obj[k]))
-                for k in sorted(obj.keys())
-            )
-        elif isinstance(obj, set):
-            return sorted(obj)
-        else:
-            return obj
 
 
 class Unit:
     def __init__(self,
         runner=None,
         id=None,
-        deps=None,
-        params=None,
+        args=None,
+        kw=None,
         info=None,
         outputs=None,
         always=False,
@@ -186,8 +173,8 @@ class Unit:
         self.id = id
         self.hash = None
         self.runner = runner
-        self.params = params
-        self.deps = deps or {}
+        self.args = args or tuple()
+        self.kw = kw or {}
         self.info = info
         self.outputs = outputs or {}
         self.always = always
@@ -196,28 +183,40 @@ class Unit:
             self.outputs[name] = pathlib.Path(path)
 
     def run(self, ctx):
+        args, kw = ctx.resolve_input(self.args, self.kw)
         if callable(self.runner):
-            self.runner(ctx)
+            self.runner(ctx, *args, **kw)
         else:
             raise Exception(f'no callable runner available for {self}')
 
-    def deps_to_dict(self):
-        r = {}
-        for name, dep in self.deps.items():
-            if isinstance(dep, pathlib.Path):
-                dep = {'type': 'path', 'path': str(dep)}
-            elif isinstance(dep, Unit):
-                dep = {'type': 'unit', 'hash': dep.hash}
-            elif isinstance(dep, UnitResultDep):
-                dep = {
-                    'type': 'unit_result',
-                    'unit_hash': dep.unit.hash,
-                    'result_name': dep.name,
-                }
-            else:
-                raise Exception('invalid unit dependency type: {type(dep)}')
-            r[name] = dep
+    def __input_value_to_dict(self, value):
+        if isinstance(value, pathlib.Path):
+            return {'type': 'path', 'path': str(value)}
+        elif isinstance(value, Unit):
+            return {'type': 'unit', 'hash': value.hash}
+        elif isinstance(value, UnitResultDep):
+            return {
+                'type': 'unit_result',
+                'unit_hash': value.unit.hash,
+                'result_name': value.name,
+            }
+        else:
+            return {'type': 'other', 'value': value}
+
+    def input_to_dict(self):
+        r = {'args': [], 'kw': {}}
+
+        for v in self.args:
+            r['args'].append(self.__input_value_to_dict(v))
+
+        for k, v in self.kw.items():
+            r['kw'][k] = self.__input_value_to_dict(v)
+
         return r
+
+    def input_values(self):
+        yield from self.args
+        yield from self.kw.values()
 
     def __str__(self):
         return f'<{getattr(self.runner, "__name__", "")}:{self.id}>'
@@ -252,8 +251,7 @@ class UnitState:
             'success': None,
             'timestamp': None,
             'error_string': None,
-            'params': None,
-            'deps': None,
+            'input': None,
         }
         self.kw = kw
         self.load_state()
@@ -269,29 +267,24 @@ class UnitState:
         if not self.state['success']:
             return True
 
-        if self.unit.params != self.state['params']:
+        if self.unit.input_to_dict() != self.state['input']:
             return True
 
-        if self.unit.deps_to_dict() != self.state['deps']:
-            return True
-
-        for name, dep in self.unit.deps.items():
-            if isinstance(dep, pathlib.Path):
-                t = datetime.datetime.fromtimestamp(dep.stat().st_mtime)
+        for value in self.unit.input_values():
+            if isinstance(value, pathlib.Path):
+                t = datetime.datetime.fromtimestamp(value.stat().st_mtime)
                 if t > self.state['timestamp']:
                     return True
-            elif isinstance(dep, (Unit, UnitResultDep)):
-                dep_unit = dep if isinstance(dep, Unit) else dep.unit
+            elif isinstance(value, (Unit, UnitResultDep)):
+                unit = value if isinstance(value, Unit) else value.unit
                 try:
-                    dep_state = self.namespace.get_unit_state(dep_unit)
+                    dep_state = self.namespace.get_unit_state(unit)
                 except KeyError:
-                    raise Exception(f'{self.unit}: state for dependency unit {dep} not found' )
+                    raise Exception(f'{self.unit}: state for dependency unit {unit} not found' )
                 if dep_state.is_outdated():
                     return True
                 if dep_state.state['timestamp'] > self.state['timestamp']:
                     return True
-            else:
-                raise Exception(f'unhandled unit dependency type: {type(dep)}')
 
         return False
 
@@ -303,8 +296,7 @@ class UnitState:
 
     def commit(self, **kw):
         self.state.update(kw)
-        self.state['params'] = self.unit.params
-        self.state['deps'] = self.unit.deps_to_dict()
+        self.state['input'] = self.unit.input_to_dict()
         self.state['timestamp'] = datetime.datetime.now()
         self.save_state()
 
@@ -374,30 +366,30 @@ class UnitRunnerContext:
         return self.__unit_state.unit
 
     @property
-    def params(self):
-        return self.unit.params
-
-    @property
     def workdir(self):
         return self.__unit_state.workdir()
 
     def error(self, msg):
         raise Exception(f'{self.unit}: {msg}')
 
-    def dep(self, name):
-        if name not in self.unit.deps:
-            self.error(f'missing dependency "{name}" for unit {self.unit}')
-
-        dep = self.unit.deps[name]
-        if isinstance(dep, pathlib.Path):
-            return dep
-        elif isinstance(dep, Unit):
-            return self.__unit_state.namespace.get_unit_state(dep)
-        elif isinstance(dep, UnitResultDep):
-            dep_state = self.__unit_state.namespace.get_unit_state(dep.unit)
-            return dep_state.get_result(dep.name)
+    def __resolve_input_value(self, value):
+        if isinstance(value, pathlib.Path):
+            return value
+        elif isinstance(value, Unit):
+            return self.__unit_state.namespace.get_unit_state(value)
+        elif isinstance(value, UnitResultDep):
+            dep_state = self.__unit_state.namespace.get_unit_state(value.unit)
+            return dep_state.get_result(value.name)
         else:
-            self.error(f'unhandled dependency type for "{name}": {type(dep)}')
+            return value
+
+
+    def resolve_input(self, args, kw):
+        args = tuple(
+            self.__resolve_input_value(v) for v in args
+        )
+        kw = {k: self.__resolve_input_value(v) for k, v in kw.items()}
+        return args, kw
 
 
 class PipelineRunner:
