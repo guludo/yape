@@ -53,7 +53,7 @@ class Pipeline:
             return self.pathout2unit.get(PathOut(value), None)
         elif isinstance(value, Unit):
             return value
-        elif isinstance(value, UnitResultDep):
+        elif isinstance(value, UnitResultSubscript):
             return value.unit
         return None
 
@@ -186,7 +186,7 @@ class Unit:
     def run(self, ctx):
         args, kw = ctx.resolve_input(self.args, self.kw)
         if callable(self.runner):
-            self.runner(ctx, *args, **kw)
+            return self.runner(ctx, *args, **kw)
         else:
             raise Exception(f'no callable runner available for {self}')
 
@@ -197,11 +197,11 @@ class Unit:
             return {'type': 'pathin', 'path': str(value)}
         elif isinstance(value, Unit):
             return {'type': 'unit', 'hash': value.hash}
-        elif isinstance(value, UnitResultDep):
+        elif isinstance(value, UnitResultSubscript):
             return {
                 'type': 'unit_result',
                 'unit_hash': value.unit.hash,
-                'result_name': value.name,
+                'result_name': value.key,
             }
         else:
             return {'type': 'other', 'value': value}
@@ -224,8 +224,8 @@ class Unit:
     def __str__(self):
         return f'<{getattr(self.runner, "__name__", "")}:{self.id}>'
 
-    def result(self, name):
-        return UnitResultDep(self, name)
+    def __getitem__(self, key):
+        return UnitResultSubscript(self, name)
 
 
 class PathIn(pathlib.PurePosixPath):
@@ -236,10 +236,10 @@ class PathOut(pathlib.PurePosixPath):
     pass
 
 
-class UnitResultDep:
-    def __init__(self, unit, name):
+class UnitResultSubscript:
+    def __init__(self, unit, key):
         self.unit = unit
-        self.name = name
+        self.key = name
 
 
 class UnitStateNamespace:
@@ -266,7 +266,7 @@ class UnitState:
         }
         self.kw = kw
         self.load_state()
-        self.__result = {}
+        self.__result = None
 
     def is_outdated(self):
         if self.unit.always:
@@ -287,7 +287,7 @@ class UnitState:
                 t = datetime.datetime.fromtimestamp(p.stat().st_mtime)
                 if t > self.state['timestamp']:
                     return True
-            elif isinstance(value, (Unit, UnitResultDep)):
+            elif isinstance(value, (Unit, UnitResultSubscript)):
                 unit = value if isinstance(value, Unit) else value.unit
                 try:
                     dep_state = self.namespace.get_unit_state(unit)
@@ -300,11 +300,11 @@ class UnitState:
 
         return False
 
-    def set_result(self, name, value):
-        self.__result[name] = value
+    def set_result(self, result):
+        self.__result = result
 
-    def get_result(self, name):
-        return self.__result[name]
+    def get_result(self):
+        return self.__result
 
     def commit(self, **kw):
         self.state.update(kw)
@@ -386,10 +386,16 @@ class UnitRunnerContext:
 
     def __resolve_input_value(self, value):
         if isinstance(value, Unit):
-            return self.__unit_state.namespace.get_unit_state(value)
-        elif isinstance(value, UnitResultDep):
+            return self.__unit_state.namespace.get_unit_state(value).get_result()
+        elif isinstance(value, UnitResultSubscript):
             dep_state = self.__unit_state.namespace.get_unit_state(value.unit)
-            return dep_state.get_result(value.name)
+            result = dep_state.get_result()
+            try:
+                return result[value.key]
+            except KeyError:
+                self.error(f'{value.unit}\'s result does not have the key: {value.key}')
+            except TypeError as e:
+                self.error(f'incompatible type for {value.unit}\'s result: {e}')
         elif isinstance(value, (PathIn, PathOut)):
             return pathlib.Path(value)
         else:
@@ -424,9 +430,7 @@ class PipelineRunner:
                 try:
                     ctx = UnitRunnerContext(unit_state)
                     result = unit.run(ctx)
-                    if result:
-                        for name, value in result:
-                            unit.set_result(name, value)
+                    unit_state.set_result(result)
                 except Exception as e:
                     unit_state.commit(
                         success=False,
