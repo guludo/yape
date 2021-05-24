@@ -180,7 +180,7 @@ class Unit:
         self.runner = runner
         self.args = args or tuple()
         self.kw = kw or {}
-        self.info = info
+        self.info = info or {}
         self.always = always
 
     def run(self, ctx):
