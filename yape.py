@@ -6,7 +6,12 @@ import datetime
 import hashlib
 import json
 import pathlib
+import pickle
 import shutil
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class Pipeline:
@@ -348,8 +353,59 @@ class FSUnitState(UnitState):
             for h in to_remove:
                 shutil.rmtree(self.path / h)
 
+    def __init__(self, *k, **kw):
+        super().__init__(*k, **kw)
+        self.__result = None
+        self.__result_loaded = False
+
+    def has_result(self):
+        if 'fsunitstate_result_state' not in self.state:
+            return False
+
+        return self.state['fsunitstate_result_state']['valid']
+
+    def set_result(self, result):
+        self.__result = result
+        self.__result_loaded = True
+
+    def get_result(self):
+        if self.__result_loaded:
+            return self.__result
+
+        self.__load_result()
+        return self.__result
+
+    def __load_result(self):
+        with open(self.kw['path'] / 'result.pickle', 'rb') as f:
+            self.__result = pickle.load(f)
+            self.__result_loaded = True
+
+    def __save_result(self):
+        result_path = self.kw['path'] / 'result.pickle'
+        result_path.parent.mkdir(exist_ok=True, parents=True)
+        with open(result_path, 'wb') as f:
+            pickle.dump(self.__result, f)
+
     def save_state(self):
         state = dict(self.state)
+
+        if state['success']:
+            try:
+                self.__save_result()
+            except Exception as e:
+                state['fsunitstate_result_state'] = {
+                    'valid': False,
+                    'error_string': str(e),
+                }
+                logger.warning(f'unable to save result of {self.unit}:\n{e}')
+            else:
+                state['fsunitstate_result_state'] = {
+                    'valid': True,
+                }
+        else:
+            state['fsunitstate_result_state'] = {
+                'valid': False,
+            }
 
         if state['timestamp']:
             state['timestamp'] = state['timestamp'].isoformat()
