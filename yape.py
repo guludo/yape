@@ -278,6 +278,9 @@ class UnitState:
         if not self.state['success']:
             return True
 
+        if not self.has_result():
+            return True
+
         if self.unit.input_to_dict() != self.state['input']:
             return True
 
@@ -299,6 +302,9 @@ class UnitState:
                     return True
 
         return False
+
+    def has_result(self):
+        return True
 
     def set_result(self, result):
         self.__result = result
