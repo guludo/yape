@@ -53,21 +53,37 @@ class Pipeline:
         self.add_unit(unit)
         return unit
 
-    def __get_unit_dep(self, value):
+    def __get_unit_deps_from_value(self, value, visited):
+        if id(value) in visited:
+            return
+
+        visited.add(id(value))
+
         if isinstance(value, PathIn):
-            return self.pathout2unit.get(PathOut(value), None)
+            dep = self.pathout2unit.get(PathOut(value), None)
+            if dep:
+                yield dep
         elif isinstance(value, Unit):
-            return value
+            yield value
         elif isinstance(value, UnitResultSubscript):
-            return value.unit
-        return None
+            yield value.unit
+        elif isinstance(value, (tuple, list)):
+            for v in value:
+                yield from self.__get_unit_deps_from_value(v, visited)
+        elif isinstance(value, dict):
+            for v in value.values():
+                yield from self.__get_unit_deps_from_value(v, visited)
+
 
     def unit_dependencies(self, unit):
+        visited = set()
         return set(
             dep
-            for dep in (
-                self.__get_unit_dep(v) for v in unit.input_values()
-            ) if dep
+            for deps in (
+                self.__get_unit_deps_from_value(v, visited)
+                for v in unit.input_values()
+            )
+            for dep in deps
         )
 
     def topological_sort(self, targets=None):
@@ -195,7 +211,12 @@ class Unit:
         else:
             raise Exception(f'no callable runner available for {self}')
 
-    def __input_value_to_dict(self, value):
+    def __input_value_to_dict(self, value, cache):
+        if id(value) in cache:
+            return {'type': 'ref', 'ref_idx': cache[id(value)]}
+        else:
+            cache[id(value)] = len(cache)
+
         if isinstance(value, PathOut):
             return {'type': 'pathout', 'path': str(value)}
         elif isinstance(value, PathIn):
@@ -208,17 +229,36 @@ class Unit:
                 'unit_hash': value.unit.hash,
                 'result_name': value.key,
             }
+        elif isinstance(value, (list, tuple)):
+            return {
+                'type': 'list' if isinstance(value, list) else 'tuple',
+                'values': [
+                    self.__input_value_to_dict(v, cache)
+                    for v in value
+                ],
+            }
+        elif isinstance(value, dict):
+            keys = sorted(value)
+            return {
+                'type': 'dict',
+                'keys': keys,
+                'values': [
+                    self.__input_value_to_dict(value[k], cache)
+                    for k in keys
+                ],
+            }
         else:
             return {'type': 'other', 'value': value}
 
     def input_to_dict(self):
         r = {'args': [], 'kw': {}}
 
+        cache = {}
         for v in self.args:
-            r['args'].append(self.__input_value_to_dict(v))
+            r['args'].append(self.__input_value_to_dict(v, cache))
 
         for k, v in self.kw.items():
-            r['kw'][k] = self.__input_value_to_dict(v)
+            r['kw'][k] = self.__input_value_to_dict(v, cache)
 
         return r
 
@@ -446,29 +486,44 @@ class UnitRunnerContext:
     def error(self, msg):
         raise Exception(f'{self.unit}: {msg}')
 
-    def __resolve_input_value(self, value):
+    def __resolve_input_value(self, value, cache):
+        if id(value) in cache:
+            return cache[id(value)]
+
         if isinstance(value, Unit):
-            return self.__unit_state.namespace.get_unit_state(value).get_result()
+            r = self.__unit_state.namespace.get_unit_state(value).get_result()
         elif isinstance(value, UnitResultSubscript):
             dep_state = self.__unit_state.namespace.get_unit_state(value.unit)
             result = dep_state.get_result()
             try:
-                return result[value.key]
+                r = result[value.key]
             except KeyError:
                 self.error(f'{value.unit}\'s result does not have the key: {value.key}')
             except TypeError as e:
                 self.error(f'incompatible type for {value.unit}\'s result: {e}')
         elif isinstance(value, (PathIn, PathOut)):
-            return pathlib.Path(value)
+            r = pathlib.Path(value)
+        elif isinstance(value, list):
+            r = [self.__resolve_input_value(v, cache) for v in value]
+        elif isinstance(value, tuple):
+            r = tuple(self.__resolve_input_value(v, cache) for v in value)
+        elif isinstance(value, dict):
+            r = {
+                k: self.__resolve_input_value(v, cache)
+                for k, v in value.items()
+            }
         else:
-            return value
+            r = value
 
+        cache[id(value)] = r
+        return r
 
     def resolve_input(self, args, kw):
+        cache = {}
         args = tuple(
-            self.__resolve_input_value(v) for v in args
+            self.__resolve_input_value(v, cache) for v in args
         )
-        kw = {k: self.__resolve_input_value(v) for k, v in kw.items()}
+        kw = {k: self.__resolve_input_value(v, cache) for k, v in kw.items()}
         return args, kw
 
 
