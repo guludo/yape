@@ -207,7 +207,7 @@ class Unit:
     def run(self, ctx):
         args, kw = ctx.resolve_input(self.args, self.kw)
         if callable(self.runner):
-            return self.runner(ctx, *args, **kw)
+            return self.runner(*args, **kw)
         else:
             raise Exception(f'no callable runner available for {self}')
 
@@ -247,6 +247,8 @@ class Unit:
                     for k in keys
                 ],
             }
+        elif value is CTX:
+            return {'type': 'ctx'}
         else:
             return {'type': 'other', 'value': value}
 
@@ -280,6 +282,7 @@ class PathIn(pathlib.PurePosixPath):
 class PathOut(pathlib.PurePosixPath):
     pass
 
+CTX = object()
 
 class UnitResultSubscript:
     def __init__(self, unit, key):
@@ -512,6 +515,8 @@ class UnitRunnerContext:
                 k: self.__resolve_input_value(v, cache)
                 for k, v in value.items()
             }
+        elif value is CTX:
+            r = self
         else:
             r = value
 
