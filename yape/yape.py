@@ -142,27 +142,15 @@ class Pipeline:
     def calculate_hashes(self):
         if self.__is_hashed:
             return
+
         # Ensure there are no cycles by doing a topological sort
         self.topological_sort()
 
-        hash2unit_list = collections.defaultdict(list)
-        hash_cache = {}
+        cache = {}
+        hash2unit = {}
         for unit in self.units:
-            h = self.__calc_unit_hash(unit, hash_cache)
-            hash2unit_list[h].append(unit)
-
-        # Attach hash values to units.
-        for h, l in hash2unit_list.items():
-            hashes = [h]
-            # Solve collisions by appending the unit id.
-            if len(l) > 1:
-                logging.warning(f'units [{", ".join(str(u) for u in l)}] have colliding hashes')
-                hashes = [f'{h}-{unit.id}' for unit in l]
-            for h, unit in zip(hashes, l):
-                unit.hash = h
-
-        self.hash2unit = {unit.hash: unit for unit in self.units}
-
+            self.__calc_unit_hash(unit, cache, hash2unit)
+        self.hash2unit = hash2unit
         self.__is_hashed = True
 
     def __json_default(self, o):
@@ -172,19 +160,36 @@ class Pipeline:
             return str(o)
         return str(o)
 
-    def __calc_unit_hash(self, unit, cache):
+    def __calc_unit_hash(self, unit, cache, hash2unit):
         if unit in cache:
             return cache[unit]
+
+        for dep in self.unit_dependencies(unit):
+            self.__calc_unit_hash(dep, cache, hash2unit)
 
         h = hashlib.sha256()
 
         # Hash input
-        input_json = json.dumps(unit.input_to_dict(), default=self.__json_default)
+        input_json = json.dumps(
+            unit.input_to_dict(),
+            sort_keys=True,
+            default=self.__json_default,
+        )
         h.update(input_json.encode())
 
         # TODO: consider hashing code as well
 
-        return h.hexdigest()
+        h = h.hexdigest()
+
+        # Solve collisions by appending the unit id.
+        if h in hash2unit:
+            other = hash2unit[h]
+            h = f'{h}-{unit.id}'
+            logging.warning(f'units {unit} and {other} have colliding hashes, appending unit id to {unit}\'s hash. Values: {h}, {other.hash}')
+
+        unit.hash = h
+        hash2unit[h] = unit
+        cache[unit] = h
 
 
 class Unit:
