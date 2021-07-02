@@ -391,7 +391,12 @@ class FSUnitState(UnitState):
             self.path = pathlib.Path(path)
 
         def __call__(self, unit, namespace):
-            return FSUnitState(unit, namespace, path=self.path / unit.hash)
+            return FSUnitState(self, unit, namespace)
+
+        def get_path(self, unit):
+            unit_path = self.path / 'hashed' / unit.hash
+            unit_path.mkdir(exist_ok=True, parents=True)
+            return unit_path
 
         def garbage_collect(self, units):
             active_hashes = set(unit.hash for unit in units)
@@ -401,8 +406,9 @@ class FSUnitState(UnitState):
             for h in to_remove:
                 shutil.rmtree(self.path / h)
 
-    def __init__(self, *k, **kw):
-        super().__init__(*k, **kw)
+    def __init__(self, ws, unit, *k, **kw):
+        self.__path = ws.get_path(unit)
+        super().__init__(unit, *k, **kw)
         self.__result = None
         self.__result_loaded = False
 
@@ -424,12 +430,12 @@ class FSUnitState(UnitState):
         return self.__result
 
     def __load_result(self):
-        with open(self.kw['path'] / 'result.pickle', 'rb') as f:
+        with open(self.__path / 'result.pickle', 'rb') as f:
             self.__result = pickle.load(f)
             self.__result_loaded = True
 
     def __save_result(self):
-        result_path = self.kw['path'] / 'result.pickle'
+        result_path = self.__path / 'result.pickle'
         result_path.parent.mkdir(exist_ok=True, parents=True)
         with open(result_path, 'wb') as f:
             pickle.dump(self.__result, f)
@@ -458,12 +464,11 @@ class FSUnitState(UnitState):
         if state['timestamp']:
             state['timestamp'] = state['timestamp'].isoformat()
 
-        state_path = self.kw['path'] / 'state.json'
-        state_path.parent.mkdir(exist_ok=True, parents=True)
+        state_path = self.__path / 'state.json'
         state_path.write_text(json.dumps(state))
 
     def load_state(self):
-        state_path = self.kw['path'] / 'state.json'
+        state_path = self.__path / 'state.json'
         if not state_path.exists():
             return
 
@@ -474,7 +479,7 @@ class FSUnitState(UnitState):
         self.state = state
 
     def workdir(self):
-        p = self.kw['path'] / 'workdir'
+        p = self.__path / 'workdir'
         p.mkdir(exist_ok=True, parents=True)
         return p
 
