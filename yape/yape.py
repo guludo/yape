@@ -5,6 +5,7 @@ import collections
 import datetime
 import hashlib
 import json
+import os.path
 import pathlib
 import pickle
 import shutil
@@ -202,6 +203,7 @@ class Unit:
         always=False,
     ):
         self.id = id
+        self.has_explicit_id = not (id is None or id == '')
         self.hash = None
         self.runner = runner
         self.args = args or tuple()
@@ -396,6 +398,25 @@ class FSUnitState(UnitState):
         def get_path(self, unit):
             unit_path = self.path / 'hashed' / unit.hash
             unit_path.mkdir(exist_ok=True, parents=True)
+
+            if unit.has_explicit_id:
+                link_path = self.path / 'ids' / unit.id
+                link_path.parent.mkdir(exist_ok=True, parents=True)
+                target = pathlib.Path(os.path.relpath(unit_path, start=link_path.parent))
+
+                existing_value = None
+                if link_path.is_symlink():
+                    existing_value = link_path.readlink()
+                elif link_path.exists():
+                    raise Exception(f'expected {link_path} to be a symbolic link')
+
+                if existing_value != target:
+                    if existing_value:
+                        link_path.unlink()
+                    link_path.symlink_to(
+                        os.path.relpath(unit_path, start=link_path.parent),
+                        target_is_directory=True,
+                    )
             return unit_path
 
         def garbage_collect(self, units):
