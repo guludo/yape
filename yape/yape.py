@@ -87,14 +87,21 @@ class Pipeline:
             for dep in deps
         )
 
-    def topological_sort(self, targets=None):
+    def topological_sort(self, targets=None, return_dependant_counts=False):
         """
         Return a list of all units to be executed based on target units. Units
         that are direct or indirect dependencies of each target is also added.
         The list is sorted in topological order based on the dependencies.
+
+        If `return_dependant_counts` is true, then a tuple is returned with
+        the second element being a dict that maps each unit to the number of
+        dependent units found.
         """
         if targets is None:
             targets = list(self.units)
+
+        if return_dependant_counts:
+            dependant_counts = collections.Counter()
 
         visited = set()
         visiting = set()
@@ -121,7 +128,13 @@ class Pipeline:
 
                 # Get unit-type dependencies and push back to stack and mark
                 # unit as visiting
-                stack.append((unit, list(self.unit_dependencies(unit))))
+                deps = list(self.unit_dependencies(unit))
+
+                if return_dependant_counts:
+                    for dep in deps:
+                        dependant_counts[dep] += 1
+
+                stack.append((unit, deps))
                 visiting.add(unit)
             else:
                 deps = state
@@ -138,7 +151,10 @@ class Pipeline:
                     stack.append((unit, deps))
                     stack.append((dep, None))
 
-        return execution_list
+        if return_dependant_counts:
+            return execution_list, dependant_counts
+        else:
+            return execution_list
 
     def calculate_hashes(self):
         if self.__is_hashed:
@@ -367,6 +383,9 @@ class UnitState:
     def get_result(self):
         return self.__result
 
+    def unset_result(self):
+        self.__result = None
+
     def commit(self, **kw):
         self.state.update(kw)
         self.state['input'] = self.unit.input_to_dict()
@@ -449,6 +468,9 @@ class FSUnitState(UnitState):
 
         self.__load_result()
         return self.__result
+
+    def unset_result(self):
+        self.__result = None
 
     def __load_result(self):
         with open(self.__path / 'result.pickle', 'rb') as f:
@@ -575,7 +597,10 @@ class PipelineRunner:
 
         targets = self.__parse_targets(targets)
         target_set = set(targets)
-        execution_list = self.pl.topological_sort(targets)
+        execution_list, dependant_counts = self.pl.topological_sort(
+            targets,
+            return_dependant_counts=True,
+        )
 
         for unit in execution_list:
             unit_state = self.ns.get_unit_state(unit)
@@ -597,6 +622,14 @@ class PipelineRunner:
             else:
                 if unit in target_set:
                     logger.info(f'{unit} is up to date')
+
+            deps = self.pl.unit_dependencies(unit)
+            for dep in deps:
+                dependant_counts[dep] -= 1
+                if not dependant_counts[dep]:
+                    logger.info(f'Unbinding result for {dep}')
+                    dep_unit_state = self.ns.get_unit_state(dep)
+                    dep_unit_state.unset_result()
 
 
     def __parse_targets(self, targets):
