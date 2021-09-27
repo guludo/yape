@@ -45,6 +45,9 @@ class State:
     def is_up_to_date(self) -> bool:
         return False
 
+    def get_timestamp(self) -> ty.Union[datetime.datetime, None]:
+        return None
+
     def workdir(self) -> ty.Union[pathlib.Path, None]:
         if not self.__workdir:
             return None
@@ -62,6 +65,7 @@ class CachedState(State):
                  ):
         self.__path = pathlib.Path(path) if path else None
         self.__cached_is_up_to_date = None
+        self.__cached_result_mtime = None
 
         self.__node_descriptor_path = None
         if node_descriptor_path:
@@ -81,27 +85,23 @@ class CachedState(State):
             return False
 
         # 2. Check if any input path has it modification time greater than the
-        #    state result modification time.
-        result_mtime = None
+        #    state's timestamp.
         for p in self.node._pathins:
-            if result_mtime is None:
-                result_path = self.__path / 'state' / 'result.pickle'
-                result_mtime = datetime.datetime.fromtimestamp(
-                    result_path.stat().st_mtime,
-                    tz=datetime.timezone.utc,
-                )
             pathin_mtime = datetime.datetime.fromtimestamp(
                 pathlib.Path(p).stat().st_mtime,
                 tz=datetime.timezone.utc,
             )
-            if pathin_mtime > result_mtime:
+            if pathin_mtime > self.get_timestamp():
                 return False
 
         # 3. Check if nodes this node depends on are up to date (the
         #    node_descriptor of such nodes are by definition smaller than this
         #    node's).
         for dep in self.node._get_dep_nodes():
-            if not get_state(dep).is_up_to_date():
+            dep_state = get_state(dep)
+            if not dep_state.is_up_to_date():
+                return False
+            if dep_state.get_timestamp() > self.get_timestamp():
                 return False
 
         # 4. Finally, compare this node's node_descriptor with the one saved in
@@ -121,6 +121,17 @@ class CachedState(State):
         if self.__cached_is_up_to_date is None:
             self.__cached_is_up_to_date = self.__is_up_to_date()
         return self.__cached_is_up_to_date
+
+    def get_timestamp(self) -> datetime.datetime:
+        if self.__cached_result_mtime is not None:
+            return self.__cached_result_mtime
+        result_path = self.__path / 'state' / 'result.pickle'
+        result_mtime = datetime.datetime.fromtimestamp(
+            result_path.stat().st_mtime,
+            tz=datetime.timezone.utc,
+        )
+        self.__cached_result_mtime = result_mtime
+        return result_mtime
 
     def has_result(self) -> bool:
         if super().has_result():
