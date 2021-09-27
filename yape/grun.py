@@ -30,10 +30,15 @@ RunResult = ty.Union[
 
 class Runner:
     def run(self,
-            targets: RunTargets,
+            targets: RunTargets = None,
             graph: gn.Graph = None,
             ns: nodestate.StateNamespace = None,
             ) -> RunResult:
+        if targets is None:
+            if not graph:
+                raise ValueError('graph is required when targets is None')
+            targets = tuple(graph.recurse_nodes())
+
         # Generate set of target nodes
         if isinstance(targets, ty.Mapping):
             targets = {

@@ -208,6 +208,11 @@ class Graph:
 
         return cur_graph.__name2node[node_name]
 
+    def recurse_nodes(self) -> ty.Generator[Node]:
+        yield from self.__nodes
+        for g in self.__graphs:
+            yield from g.recurse_nodes()
+
     def path_producer(self, path: pathlib.Path) -> Node:
         """
         Return the node that declares to produce the path `path` or None if there
