@@ -162,15 +162,30 @@ def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
     return tuple(node_descriptor_generator(node))
 
 
-def resolve_op(op: nodeop.NodeOp, ctx: grun.NodeContext) -> nodeop.NodeOp:
-    return OpResolver(op, ctx).resolve()
+def resolve_op(op: nodeop.NodeOp,
+               ctx: grun.NodeContext,
+               custom_atom_resolver: ty.Callable = None,
+               ) -> nodeop.NodeOp:
+    return OpResolver(op, ctx, custom_atom_resolver).resolve()
+
+
+UNRESOLVED = object()
+"""
+Special value to be returned by custom atom resolvers
+(`OpResolver.custom_atom_resolver`) when default behavior is expected.
+"""
 
 
 class OpResolver:
-    def __init__(self, op: nodeop.NodeOp, ctx: grun.NodeContext):
+    def __init__(self,
+                 op: nodeop.NodeOp,
+                 ctx: grun.NodeContext,
+                 custom_atom_resolver: ty.Callable = None,
+                 ):
         self.__ctx = ctx
         self.__op = op
         self.__cache = {}
+        self.custom_atom_resolver = custom_atom_resolver
 
     def resolve(self):
         if isinstance(self.__op, nodeop.Data):
@@ -196,15 +211,7 @@ class OpResolver:
 
         # Now get the next event, which describes the value
         evt = next(self.__events)
-        if isinstance(evt, (PathOut, PathIn)):
-            resolved = pathlib.Path(evt.value)
-        elif isinstance(evt, Node):
-            resolved = evt.value._result()
-        elif isinstance(evt, CTX):
-            resolved = self.__ctx
-        elif isinstance(evt, UNSET):
-            resolved = None
-        elif isinstance(evt, (List, Tuple)):
+        if isinstance(evt, (List, Tuple)):
             resolved = [None] * evt.size
             for i in range(evt.size):
                 resolved[i] = self.__resolve_value()
@@ -215,10 +222,28 @@ class OpResolver:
             resolved = {}
             for k in keys:
                 resolved[k] = self.__resolve_value()
+        else:
+            resolved = self.__resolve_atom(evt)
+
+        self.__cache[value_id] = resolved
+        return resolved
+
+    def __resolve_atom(self, evt):
+        if self.custom_atom_resolver:
+            resolved = self.custom_atom_resolver(evt)
+            if resolved is not UNRESOLVED:
+                return resolved
+
+        if isinstance(evt, (PathOut, PathIn)):
+            resolved = pathlib.Path(evt.value)
+        elif isinstance(evt, Node):
+            resolved = evt.value._result()
+        elif isinstance(evt, CTX):
+            resolved = self.__ctx
+        elif isinstance(evt, UNSET):
+            resolved = None
         elif isinstance(evt, Other):
             resolved = evt.value
         else:
             raise RuntimeError(f'unhandled value event, this is probably a bug: {evt!r}')
-
-        self.__cache[value_id] = resolved
         return resolved
