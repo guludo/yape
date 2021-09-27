@@ -58,3 +58,56 @@ def topological_sort(target_nodes: ty.Iterable[gn.Node],
                 stack.append((dep, None))
 
     return sorted_nodes, dependant_counts
+
+
+TargetsSpec = ty.Union[
+    'gn.NodeRef',
+    ty.Sequence['gn.NodeRef'],
+    ty.Mapping[str, 'gn.NodeRef'],
+]
+
+
+ParsedTargetsSpec = ty.Union[
+    'gn.Node',
+    tuple['gn.Node'],
+    dict[str, 'gn.NodeRef'],
+]
+
+
+def parse_targets(targets: TargetsSpec,
+                  graph: gn.Graph,
+                  ) -> tuple[set[fn.Node], ParsedTargetsSpec]:
+    if targets is None:
+        if not graph:
+            raise ValueError('graph is required when targets is None')
+        targets = tuple(graph.recurse_nodes())
+
+    def get_node(ref: gn.NodeRef, graph: ty.Union[gn.Graph, None]) -> gn.Node:
+        if isinstance(ref, gn.Node):
+            return ref
+        else:
+            if not graph:
+                raise ValueError('graph is required when node reference is not a Node instance')
+
+            node = graph.node(ref)
+
+            if not isinstance(node, gn.Node):
+                raise RuntimeError('node for ref {ref!r} not found')
+
+            return node
+
+    if isinstance(targets, ty.Mapping):
+        targets = {
+            k: get_node(v, graph) for k, v in targets.items()
+        }
+        nodes = set(targets.values())
+    elif isinstance(targets, ty.Sequence) and not isinstance(targets, str):
+        targets = tuple(get_node(t, graph) for t in targets)
+        nodes = set(targets)
+    else:
+        # The remaining possible type to expect is a NodeRef.
+        # NOTE: the variable targets here refers to a single node despite its
+        # name.
+        targets = get_node(targets, graph)
+        nodes = {targets}
+    return nodes, targets

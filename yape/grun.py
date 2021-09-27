@@ -14,13 +14,6 @@ from . import (
 )
 
 
-RunTargets = ty.Union[
-    'gn.NodeRef',
-    ty.Sequence['gn.NodeRef'],
-    ty.Mapping[str, 'gn.NodeRef'],
-]
-
-
 RunResult = ty.Union[
     'ty.Any',
     tuple,
@@ -30,30 +23,11 @@ RunResult = ty.Union[
 
 class Runner:
     def run(self,
-            targets: RunTargets = None,
+            targets: util.TargetsSpec = None,
             graph: gn.Graph = None,
             ns: nodestate.StateNamespace = None,
             ) -> RunResult:
-        if targets is None:
-            if not graph:
-                raise ValueError('graph is required when targets is None')
-            targets = tuple(graph.recurse_nodes())
-
-        # Generate set of target nodes
-        if isinstance(targets, ty.Mapping):
-            targets = {
-                k: self.__get_target_node(v, graph) for k, v in targets.items()
-            }
-            target_nodes = set(targets.values())
-        elif isinstance(targets, ty.Sequence) and not isinstance(targets, str):
-            targets = tuple(self.__get_target_node(t, graph) for t in targets)
-            target_nodes = set(targets)
-        else:
-            # The remaining possible type to expect is a NodeRef.
-            # NOTE: only one target, but we keep using the variable targets
-            # (plural) for consistency
-            targets = self.__get_target_node(targets, graph)
-            target_nodes = {targets}
+        target_nodes, targets = util.parse_targets(targets, graph)
 
         # Get nodes to be executed
         nodes_to_run, dependant_counts = util.topological_sort(target_nodes)
@@ -80,7 +54,7 @@ class Runner:
                         nodestate.get_state(dep).release()
 
             # Generate return value
-            if isinstance(targets, ty.Mapping):
+            if isinstance(targets, dict):
                 return_value = {
                     k: n._result() for k, n in targets.items()
                 }
@@ -90,21 +64,6 @@ class Runner:
                 return_value = targets._result()
 
         return return_value
-
-    @staticmethod
-    def __get_target_node(ref: gn.NodeRef, graph: ty.Union[gn.Graph, None]):
-        if isinstance(ref, gn.Node):
-            return ref
-        else:
-            if not graph:
-                raise ValueError('graph is required when node reference is not a Node instance')
-
-            node = graph.node(ref)
-
-            if not isinstance(node, gn.Node):
-                raise RuntimeError('node for ref {ref!r} not found')
-
-            return node
 
 
 class NodeContext:
