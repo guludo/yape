@@ -2,7 +2,6 @@
 """
 from __future__ import annotations
 
-import collections
 import contextlib
 
 from . import (
@@ -10,6 +9,7 @@ from . import (
     nodeop,
     nodestate,
     ty,
+    util,
     walkproto,
 )
 
@@ -56,7 +56,7 @@ class Runner:
             target_nodes = {targets}
 
         # Get nodes to be executed
-        nodes_to_run, dependant_counts = self.__topological_sort(target_nodes)
+        nodes_to_run, dependant_counts = util.topological_sort(target_nodes)
 
         # Get or create the state namespace
         node_state_ctx = contextlib.nullcontext()
@@ -90,57 +90,6 @@ class Runner:
                 return_value = targets._result()
 
         return return_value
-
-    @staticmethod
-    def __topological_sort(target_nodes):
-        visited = set()
-        visiting = set()
-        sorted_nodes = []
-        path = []
-        stack = [(node, None) for node in target_nodes]
-        dependant_counts = collections.Counter()
-        while stack:
-            node, state = stack.pop()
-
-            if state is None:
-                if node in visited:
-                    # This node and dependencies have already been added to the
-                    # execution list
-                    continue
-
-                path.append(node)
-
-                if node in visiting:
-                    # If I am still visiting this node, this means a circular
-                    # dependency has been found
-                    path_str = ' <- '.join(str(n) for n in reversed(path))
-                    raise Exception(f'circular dependency found between nodes: {path_str}')
-
-                # Get dependencies, push back to stack and mark node as
-                # visiting
-                deps = list(set(node._get_dep_nodes()))
-
-                for dep in deps:
-                    dependant_counts[dep] += 1
-
-                stack.append((node, deps))
-                visiting.add(node)
-            else:
-                deps = state
-                # If there are no more dependencies to be added to the
-                # execution list, the node is ready to be added. If not, then
-                # push the next node to the stack.
-                if not deps:
-                    sorted_nodes.append(node)
-                    visited.add(node)
-                    visiting.remove(node)
-                    path.pop()
-                else:
-                    dep = deps.pop()
-                    stack.append((node, deps))
-                    stack.append((dep, None))
-
-        return sorted_nodes, dependant_counts
 
     @staticmethod
     def __get_target_node(ref: gn.NodeRef, graph: ty.Union[gn.Graph, None]):
