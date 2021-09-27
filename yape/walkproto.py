@@ -1,0 +1,224 @@
+"""
+This module defines event types and functions used by `Node._op_walk()` and
+`Node._get_node_descriptor()`.
+"""
+from __future__ import annotations
+
+import collections
+import inspect
+import pathlib
+
+from . import (
+    gn,
+    grun,
+    nodeop,
+    ty,
+)
+
+
+_event_types = []
+
+def event_type(name: str, *fields: tuple[str]) -> type[collections.namedtuple]:
+    """
+    A factory function for creating types.
+
+    The resulting type is a namedtuple with "type" as the first field name and
+    `fields` as the remaining field names. When creating a new instance of the
+    named tuple, the value of the first field will automatically be set to
+    `name`.
+
+    The rationale behind such a behavior is that, since
+    `Node._get_node_descriptor()` is intended to be used as a way of uniquely
+    identifying the node, it is important emit the type of the event together
+    with its arguments.
+    """
+    fields = ('type', *fields)
+    base = collections.namedtuple(name, fields)
+
+    def __new__(cls, *k, **kw):
+        k = (name, *k)
+        return base.__new__(cls, *k, **kw)
+
+    def __getnewargs__(self):
+        return self[1:]
+
+    namespace = {
+        '__new__': __new__,
+        '__getnewargs__': __getnewargs__,
+    }
+
+    t = type(name, (base,), namespace)
+    _event_types.append(t)
+    return t
+
+
+# The types below are used by `Node._op_walk()` and
+# `Node._get_node_descriptor()`
+ValueId = event_type('ValueId', 'id')
+Ref = event_type('Ref', 'id')
+OpType = event_type('OpType', 'value')
+DataOp = event_type('DataOp', 'value')
+PathOut = event_type('PathOut', 'value')
+PathIn = event_type('PathIn', 'value')
+Node = event_type('Node', 'value')
+CTX = event_type('CTX')
+UNSET = event_type('UNSET')
+Tuple = event_type('Tuple', 'size')
+List = event_type('List', 'size')
+Dict = event_type('Dict', 'keys')
+Other = event_type('Other', 'value')
+
+
+# The types below are used by `Node._get_node_descriptor()`
+OpTypeDescriptor = event_type('OpTypeDescriptor', 'name')
+CallableDescriptor = event_type('CallableDescriptor', 'source')
+PathinsDescriptor = event_type('PathinsDescriptor', 'paths')
+PathoutsDescriptor = event_type('PathoutsDescriptor', 'paths')
+
+
+# Define Event as the Union of all event types
+Event = ty.Union[tuple(_event_types)]
+
+
+def walk(op: nodeop.NodeOp):
+    refs = {}
+    yield OpType(type(op))
+    if isinstance(op, nodeop.Data):
+        yield DataOp(op)
+    else:
+        for v in op:
+            yield from walk_value(v, refs)
+
+
+def walk_value(value: ty.Any, refs: dict) -> ty.Generator[Event]:
+    if id(value) in refs:
+        yield Ref(refs[id(value)])
+        return
+
+    refs[id(value)] = len(refs)
+    yield ValueId(refs[id(value)])
+
+    if isinstance(value, nodeop.PathOut):
+        yield PathOut(value)
+    elif isinstance(value, nodeop.PathIn):
+        yield PathIn(value)
+    elif isinstance(value, gn.Node):
+        yield Node(value)
+    elif value == nodeop.CTX:
+        yield CTX()
+    elif value == nodeop.UNSET:
+        yield UNSET()
+    elif type(value) == list:
+        yield List(size=len(value))
+        for v in value:
+            yield from walk_value(v, refs)
+    elif type(value) == tuple:
+        yield Tuple(size=len(value))
+        for v in value:
+            yield from walk_value(v, refs)
+    elif type(value) == dict:
+        keys = tuple(value)
+        yield Dict(keys=keys)
+        for k in keys:
+            yield from walk_value(value[k], refs)
+    else:
+        yield Other(value)
+
+
+def node_descriptor_generator(node: gn.NodeOp) -> ty.Generator[Event]:
+    op = node._op
+
+    if isinstance(op, nodeop.Data):
+        # For Data operations, the attribute "id" of the Data operation
+        # identifies the data if present. In that case, we remove the
+        # payload to make things light and fast.
+        if op.id:
+            op = op._replace(payload=None)
+
+    yield PathinsDescriptor(node._pathins)
+    yield PathoutsDescriptor(node._pathouts)
+    for evt in walk(op):
+        if isinstance(evt, Node):
+            n = evt.value
+            evt = evt._replace(value=None)
+            yield evt
+            yield from node_descriptor_generator(n)
+        elif (isinstance(evt, Other)
+              and callable(evt.value)
+              and not inspect.isbuiltin(evt.value)):
+            fn = evt.value
+            yield CallableDescriptor(
+                # NOTE: It would be nice if we could add information from the
+                # function's closure and default arguments as well. An issue
+                # with that is that it will be common for some unpickable
+                # objects to appear.
+                source=inspect.getsource(fn),
+            )
+        else:
+            yield evt
+
+
+def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
+    return tuple(node_descriptor_generator(node))
+
+
+def resolve_op(op: nodeop.NodeOp, ctx: grun.NodeContext) -> nodeop.NodeOp:
+    return OpResolver(op, ctx).resolve()
+
+
+class OpResolver:
+    def __init__(self, op: nodeop.NodeOp, ctx: grun.NodeContext):
+        self.__ctx = ctx
+        self.__op = op
+        self.__cache = {}
+
+    def resolve(self):
+        if isinstance(self.__op, nodeop.Data):
+            return self.__op
+        self.__events = walk(self.__op)
+        return self.__resolve_op()
+
+    def __resolve_op(self) -> nodeop.NodeOp:
+        op_type = next(self.__events).value
+        num_args = len(op_type._fields)
+        args = [None] * num_args
+        for i in range(num_args):
+            args[i] = self.__resolve_value()
+        return op_type(*args)
+
+    def __resolve_value(self) -> ty.Any:
+        evt = next(self.__events)
+        if isinstance(evt, Ref):
+            return self.__cache[evt.id]
+
+        # Otherwise, evt will be a ValueId
+        value_id = evt.id
+
+        # Now get the next event, which describes the value
+        evt = next(self.__events)
+        if isinstance(evt, (PathOut, PathIn)):
+            resolved = pathlib.Path(evt.value)
+        elif isinstance(evt, Node):
+            resolved = evt.value._result()
+        elif isinstance(evt, CTX):
+            resolved = self.__ctx
+        elif isinstance(evt, UNSET):
+            resolved = None
+        elif isinstance(evt, (List, Tuple)):
+            resolved = [None] * evt.size
+            for i in range(evt.size):
+                resolved[i] = self.__resolve_value()
+            if isinstance(evt, Tuple):
+                resolved = tuple(resolved)
+        elif isinstance(evt, Dict):
+            keys = evt.keys
+            resolved = {}
+            for k in keys:
+                resolved[k] = self.__resolve_value()
+        elif isinstance(evt, Other):
+            resolved = evt.value
+        else:
+            raise RuntimeError(f'unhandled value event, this is probably a bug: {evt!r}')
+
+        self.__cache[value_id] = resolved
+        return resolved
