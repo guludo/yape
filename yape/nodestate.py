@@ -185,6 +185,7 @@ class StateNamespace:
         if _current_namespace:
             raise RuntimeError('there is already a state namespace in place')
         _current_namespace = self
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         global _current_namespace
