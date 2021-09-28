@@ -125,7 +125,14 @@ def walk_value(value: ty.Any, refs: dict) -> ty.Generator[Event]:
         yield Other(value)
 
 
-def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
+def node_descriptor(node: gn.Node,
+                    cache: dict[gn.Node, tuple[Event]] = None,
+                    ) -> tuple[Event]:
+    if (cache is not None
+            and not isinstance(node._op, nodeop.Value)
+            and node in cache):
+        return cache[node]
+
     op = node._op
 
     if isinstance(op, nodeop.Data):
@@ -144,7 +151,7 @@ def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
             n = evt.value
             evt = evt._replace(value=None)
             desc.append(evt)
-            desc.append(node_descriptor(n))
+            desc.append(node_descriptor(n, cache))
         elif (isinstance(evt, Other)
               and callable(evt.value)
               and not inspect.isbuiltin(evt.value)):
@@ -159,6 +166,8 @@ def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
         else:
             desc.append(evt)
     desc = tuple(desc)
+    if cache is not None and not isinstance(node._op, nodeop.Value):
+        cache[node] = desc
     return desc
 
 
