@@ -125,7 +125,7 @@ def walk_value(value: ty.Any, refs: dict) -> ty.Generator[Event]:
         yield Other(value)
 
 
-def node_descriptor_generator(node: gn.NodeOp) -> ty.Generator[Event]:
+def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
     op = node._op
 
     if isinstance(op, nodeop.Data):
@@ -135,31 +135,31 @@ def node_descriptor_generator(node: gn.NodeOp) -> ty.Generator[Event]:
         if op.id:
             op = op._replace(payload=None)
 
-    yield PathinsDescriptor(node._pathins)
-    yield PathoutsDescriptor(node._pathouts)
+    desc = []
+
+    desc.append(PathinsDescriptor(node._pathins))
+    desc.append(PathoutsDescriptor(node._pathouts))
     for evt in walk(op):
         if isinstance(evt, Node):
             n = evt.value
             evt = evt._replace(value=None)
-            yield evt
-            yield from node_descriptor_generator(n)
+            desc.append(evt)
+            desc.append(node_descriptor(n))
         elif (isinstance(evt, Other)
               and callable(evt.value)
               and not inspect.isbuiltin(evt.value)):
             fn = evt.value
-            yield CallableDescriptor(
+            desc.append(CallableDescriptor(
                 # NOTE: It would be nice if we could add information from the
                 # function's closure and default arguments as well. An issue
                 # with that is that it will be common for some unpickable
                 # objects to appear.
                 source=inspect.getsource(fn),
-            )
+            ))
         else:
-            yield evt
-
-
-def node_descriptor(node: gn.Node) -> tuple[walkproto.Event]:
-    return tuple(node_descriptor_generator(node))
+            desc.append(evt)
+    desc = tuple(desc)
+    return desc
 
 
 def resolve_op(op: nodeop.NodeOp,
