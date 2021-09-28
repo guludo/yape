@@ -62,10 +62,12 @@ class CachedState(State):
                  path: ty.Union[pathlib.Path, str] = None,
                  node_descriptor_path: ty.Union[pathlib.Path, str] = None,
                  workdir: ty.Union[pathlib.Path, str] = None,
+                 check_saved_descriptor: bool = True
                  ):
         self.__path = pathlib.Path(path) if path else None
         self.__cached_is_up_to_date = None
         self.__cached_result_mtime = None
+        self.__check_saved_descriptor = check_saved_descriptor
 
         self.__node_descriptor_path = None
         if node_descriptor_path:
@@ -104,16 +106,18 @@ class CachedState(State):
             if dep_state.get_timestamp() > self.get_timestamp():
                 return False
 
-        # 4. Finally, compare this node's node_descriptor with the one saved in
-        #    the state directory.
-        node_descriptor = self.node._get_node_descriptor()
-        node_descriptor_path = self.__node_descriptor_path
-        if not node_descriptor_path:
-            node_descriptor_path = state_dir / 'node_descriptor.pickle'
-        with open(node_descriptor_path, 'rb') as f:
-            saved_descriptor = pickle.load(f)
-        if node_descriptor != saved_descriptor:
-            return False
+        # 4. Finally, if this object was constructed with
+        #    ``check_saved_descriptor=True``, compare this node's
+        #    node_descriptor with the one saved in the state directory.
+        if self.__check_saved_descriptor:
+            node_descriptor = self.node._get_node_descriptor()
+            node_descriptor_path = self.__node_descriptor_path
+            if not node_descriptor_path:
+                node_descriptor_path = state_dir / 'node_descriptor.pickle'
+            with open(node_descriptor_path, 'rb') as f:
+                saved_descriptor = pickle.load(f)
+            if node_descriptor != saved_descriptor:
+                return False
 
         return True
 
@@ -220,6 +224,10 @@ class CachedStateDB:
             node,
             path=entry_dir / 'statedir',
             node_descriptor_path=entry_dir / 'node_descriptor.pickle',
+            # We use check_saved_descriptor=False here because we make sure
+            # that the saved descriptor matches the node's descriptor in
+            # __find_entry_dir()
+            check_saved_descriptor=False,
         )
 
     def __find_entry_dir(self, node: gn.Node) -> pathlib.Path:
