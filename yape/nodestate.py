@@ -12,6 +12,7 @@ import uuid
 from . import (
     gn,
     ty,
+    walkproto,
 )
 
 
@@ -186,6 +187,7 @@ class CachedState(State):
 class StateNamespace:
     def __init__(self, factory: Callable[[gn.Node], State] = State):
         self.__states = {}
+        self.__node_descriptor_cache = {}
         self.factory = factory
 
     def get_state(self, node: gn.Node) -> State:
@@ -212,6 +214,10 @@ class StateNamespace:
         for s in self.__states.values():
             s.release()
         self.__states = {}
+        self.__node_descriptor_cache = {}
+
+    def get_node_descriptor(self, node):
+        return walkproto.node_descriptor(node, self.__node_descriptor_cache)
 
 
 class CachedStateDB:
@@ -231,7 +237,10 @@ class CachedStateDB:
         )
 
     def __find_entry_dir(self, node: gn.Node) -> pathlib.Path:
-        node_descriptor = node._get_node_descriptor()
+        if _current_namespace:
+            node_descriptor = _current_namespace.get_node_descriptor(node)
+        else:
+            node_descriptor = node._get_node_descriptor()
         descriptor_bytes = pickle.dumps(node_descriptor)
         node_hash = hashlib.sha256(descriptor_bytes).hexdigest()
 
