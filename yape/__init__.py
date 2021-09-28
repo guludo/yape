@@ -3,6 +3,7 @@ from __future__ import annotations
 from . import (
     gn,
     grun,
+    mingraph,
     nodeop,
     nodestate,
     ty,
@@ -36,6 +37,9 @@ CachedStateDB = nodestate.CachedStateDB
 
 def graph(**kw) -> gn.Graph:
     return gn.Graph(**kw)
+
+
+mingraph = mingraph.mingraph
 
 
 def fn(f: ty.Any,
