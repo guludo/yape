@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import pickle
 
 from . import (
     nodeop,
@@ -108,6 +109,8 @@ class Node:
         return Node(nodeop.GetItem(self, key))
 
     def __getattr__(self, name):
+        if name in ('__getstate__', '__setstate__'):
+            raise AttributeError('__setstate__ and __setstate__ are reserved for pickle')
         if isinstance(name, str) and name[0] == '_':
             msg = (
                 f'failed to get attribute {name!r}: '
@@ -176,11 +179,17 @@ class Graph:
         return '/'.join(reversed(stack))
 
     def save(self, path: ty.Union[pathlib.Path, str]):
-        raise NotImplementedError()
+        if self.__in_build_context:
+            msg = 'can not save a graph that is currently in build context'
+            raise RuntimeError(msg)
+
+        with open(path, 'wb') as f:
+            pickle.dump(self, f)
 
     @staticmethod
     def load(path: ty.Union[pathlib.Path, str]):
-        raise NotImplementedError()
+        with open(path, 'rb') as f:
+            return pickle.load(f)
 
     def node(self, path: NodeName) -> ty.Union[Node, Graph]:
         if isinstance(path, str):
