@@ -175,13 +175,11 @@ class Graph:
             g = g.__parent
         return '/'.join(reversed(stack))
 
-    def save(self,
-            path: ty.Union[pathlib.Path, str],
-            targets: ty.Iterable[NodeRef] = None,
-            ):
+    def save(self, path: ty.Union[pathlib.Path, str]):
         raise NotImplementedError()
 
-    def load(self, path: ty.Union[pathlib.Path, str]):
+    @staticmethod
+    def load(path: ty.Union[pathlib.Path, str]):
         raise NotImplementedError()
 
     def node(self, path: NodeName) -> ty.Union[Node, Graph]:
