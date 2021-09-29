@@ -42,6 +42,13 @@ def graph(**kw) -> gn.Graph:
 mingraph = mingraph.mingraph
 
 
+def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
+    """
+    Shorthand for ``yape.gn.Graph.load(path)``.
+    """
+    return gn.Graph.load(path)
+
+
 def fn(f: ty.Any,
        /,
        args=None,
