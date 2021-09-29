@@ -120,7 +120,7 @@ class Node:
         return Node(nodeop.Call(self, args, kwargs))
 
     def __str__(self):
-        return f'<Node:{self._fullname()}>'
+        return f'<{self._fullname()}>'
 
     def __repr__(self):
         return f'Node({self._op})'
