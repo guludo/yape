@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import logging
 import pickle
 
 from . import (
@@ -10,6 +11,9 @@ from . import (
     ty,
     walkproto,
 )
+
+
+logger = logging.getLogger()
 
 
 NodeName = ty.Union[str, ty.Iterable[str]]
@@ -185,7 +189,7 @@ class Graph:
             raise RuntimeError(msg)
 
         with open(path, 'wb') as f:
-            pickle.dump(self, f)
+            CustomPickler(f).dump(self)
 
     @staticmethod
     def load(path: ty.Union[pathlib.Path, str]):
@@ -274,6 +278,16 @@ class Graph:
 
         self.__nodes.append(node)
 
+
+class CustomPickler(pickle.Pickler):
+    def reducer_override(self, obj):
+        if getattr(obj, '__module__', '') == '__main__':
+            msg = (
+                f'the object {obj} is defined in the __main__ module, '
+                'you may run into issues if loading this graph from another module'
+            )
+            logger.warning(msg)
+        return NotImplemented
 
 _graph_build_stack = []
 _global_graph = Graph()
