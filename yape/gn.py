@@ -239,7 +239,13 @@ class Graph:
 
     def __add_node(self, node: Node):
         if not node._name:
-            node._name = f'node-{len(self.__nodes)}'
+            if (isinstance(node._op, nodeop.Call)
+                    and hasattr(node._op.fn, '__name__')):
+                node._name = node._op.fn.__name__
+                if node._name in self.__name2node:
+                    node._name = f'{node._name}-{len(self.__nodes)}'
+            else:
+                node._name = f'node-{len(self.__nodes)}'
 
         if node._name in self.__name2node:
             msg = f'there is already a node named "{node._name}"'
