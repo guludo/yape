@@ -245,7 +245,7 @@ class Graph:
                 if node._name in self.__name2node:
                     node._name = f'{node._name}-{len(self.__nodes)}'
             else:
-                node._name = f'node-{len(self.__nodes)}'
+                node._name = f'unnamed-{len(self.__nodes)}'
 
         if node._name in self.__name2node:
             msg = f'there is already a node named "{node._name}"'
