@@ -4,6 +4,7 @@ import pathlib
 import pickle
 
 from . import (
+    mingraph,
     nodeop,
     nodestate,
     ty,
@@ -232,6 +233,12 @@ class Graph:
         if path in self.__root.__pathout2node:
             return self.__root.__pathout2node[path]
         return _global_graph.__pathout2node.get(path)
+
+    def mingraph(self,
+                 unbounds: util.TargetsSpec,
+                 targets: util.TargetsSpec,
+                 ) -> Graph:
+        return mingraph.mingraph(unbounds, targets, graph=self)
 
     def __add_graph(self, graph: Graph):
         if not graph.name:
