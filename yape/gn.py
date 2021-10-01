@@ -249,7 +249,7 @@ class Graph:
             graph.name = f'graph-{len(self.__graphs)}'
 
         if graph.name in self.__name2node:
-            msg = f'there is already a node named "{node._name}"'
+            msg = f'there is already a node named "{graph.name}"'
             raise ValueError(msg)
         self.__name2node[graph.name] = graph
 
