@@ -49,6 +49,30 @@ def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
     return gn.Graph.load(path)
 
 
+def gr(nodegen: ty.Callable,
+       /,
+       args=None,
+       kwargs=None,
+       **kw,
+       ) -> ty.Union[ty.Callable, gn.Graph]:
+    def graph_creator(*nodegen_args, **nodegen_kwargs) -> gn.Graph:
+        g = gn.Graph(**kw)
+        with g:
+            nodegen(*nodegen_args, **nodegen_kwargs)
+        return g
+
+    if args is None and kwargs is None:
+        return graph_creator
+
+    if args is None:
+        args = tuple()
+
+    if kwargs is None:
+        kwargs = {}
+
+    return graph_creator(*args, **kwargs)
+
+
 def fn(f: ty.Any,
        /,
        args=None,
