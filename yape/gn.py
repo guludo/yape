@@ -142,6 +142,10 @@ class Graph:
         if name and '/' in name:
             raise ValueError(f'graph name can not contain the slash character ("/"): {name}')
 
+        if not parent:
+            if _graph_build_stack:
+                parent = _graph_build_stack[-1]
+
         self.name = name
         self.__in_build_context = False
         self.__nodes = []
