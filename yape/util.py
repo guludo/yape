@@ -62,6 +62,7 @@ def topological_sort(target_nodes: ty.Iterable[gn.Node],
 
 TargetsSpec = ty.Union[
     'gn.NodeRef',
+    ty.Callable,
     ty.Sequence['gn.NodeRef'],
     ty.Mapping[str, 'gn.NodeRef'],
 ]
@@ -103,6 +104,11 @@ def parse_targets(targets: TargetsSpec,
         nodes = set(targets.values())
     elif isinstance(targets, ty.Sequence) and not isinstance(targets, str):
         targets = tuple(get_node(t, graph) for t in targets)
+        nodes = set(targets)
+    elif callable(targets):
+        if not graph:
+            raise ValueError('graph is required when targets is a callable')
+        targets = tuple(n for n in graph.recurse_nodes() if targets(n))
         nodes = set(targets)
     else:
         # The remaining possible type to expect is a NodeRef.
