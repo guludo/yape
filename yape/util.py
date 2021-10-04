@@ -105,7 +105,7 @@ def parse_targets(targets: TargetsSpec,
     elif isinstance(targets, ty.Sequence) and not isinstance(targets, str):
         targets = tuple(get_node(t, graph) for t in targets)
         nodes = set(targets)
-    elif callable(targets):
+    elif callable(targets) and not isinstance(targets, gn.Node):
         if not graph:
             raise ValueError('graph is required when targets is a callable')
         targets = tuple(n for n in graph.recurse_nodes() if targets(n))
