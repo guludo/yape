@@ -178,7 +178,20 @@ def resolve_op(op: nodeop.NodeOp,
     return OpResolver(op, ctx, custom_atom_resolver).resolve()
 
 
-UNRESOLVED = object()
+class _UNRESOLVED:
+    __slots__ = []
+
+    singleton = None
+
+    def __new__(cls):
+        if _UNRESOLVED.singleton:
+            return _UNRESOLVED.singleton
+        r = super().__new__(cls)
+        _UNRESOLVED.singleton = r
+        return r
+
+
+UNRESOLVED = _UNRESOLVED()
 """
 Special value to be returned by custom atom resolvers
 (`OpResolver.custom_atom_resolver`) when default behavior is expected.

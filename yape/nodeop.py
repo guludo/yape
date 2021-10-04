@@ -36,10 +36,35 @@ class PathOut(pathlib.PurePosixPath):
     pass
 
 
-CTX = object()
+class _CTX:
+    __slots__ = []
+
+    singleton = None
+
+    def __new__(cls):
+        if _CTX.singleton:
+            return _CTX.singleton
+        r = super().__new__(cls)
+        _CTX.singleton = r
+        return r
+
+CTX = _CTX()
 
 
-UNSET = object()
+class _UNSET:
+    __slots__ = []
+
+    singleton = None
+
+    def __new__(cls):
+        if _UNSET.singleton:
+            return _UNSET.singleton
+        r = super().__new__(cls)
+        _UNSET.singleton = r
+        return r
+
+
+UNSET = _UNSET()
 
 
 NodeOp = ty.Union[tuple(_op_types)]
