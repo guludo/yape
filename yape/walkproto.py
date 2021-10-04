@@ -104,9 +104,9 @@ def walk_value(value: ty.Any, refs: dict) -> ty.Generator[Event]:
         yield PathIn(value)
     elif isinstance(value, gn.Node):
         yield Node(value)
-    elif value == nodeop.CTX:
+    elif value is nodeop.CTX:
         yield CTX()
-    elif value == nodeop.UNSET:
+    elif value is nodeop.UNSET:
         yield UNSET()
     elif type(value) == list:
         yield List(size=len(value))
