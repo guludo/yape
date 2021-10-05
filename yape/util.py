@@ -12,7 +12,7 @@ from . import (
 
 
 def topological_sort(target_nodes: ty.Iterable[gn.Node],
-                     ) -> tuple[list[gn.Node], collections.Counter]:
+                     ) -> ty.Tuple[ty.List[gn.Node], collections.Counter]:
     visited = set()
     visiting = set()
     sorted_nodes = []
@@ -73,18 +73,17 @@ TargetsSpec = ty.Union[
 
 ParsedTargetsSpec = ty.Union[
     'gn.Node',
-    tuple['gn.Node'],
-    dict[str, 'gn.NodeRef'],
+    ty.Tuple['gn.Node'],
+    ty.Dict[str, 'gn.NodeRef'],
 ]
 
 
 def parse_targets(targets: TargetsSpec,
                   graph: gn.Graph = None,
                   no_global_graph: bool = False,
-                  ) -> tuple[set[fn.Node], ParsedTargetsSpec]:
+                  ) -> ty.Tuple[ty.Set[fn.Node], ParsedTargetsSpec]:
     if not graph and not no_global_graph:
         graph = gn._global_graph
-
     if targets is None:
         if not graph:
             raise ValueError('graph is required when targets is None')

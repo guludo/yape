@@ -21,7 +21,7 @@ from . import (
 RunResult = ty.Union[
     'ty.Any',
     tuple,
-    dict[str, 'ty.Any'],
+    ty.Dict[str, 'ty.Any'],
 ]
 
 

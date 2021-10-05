@@ -57,6 +57,7 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
   set, and finally again (but this time skipped) with the first set of
   dependencies. Without this fix, the output path would contain be the file
   from the second run.
+- Using type hints compatible with Python 3.8.
 
 ## 0.1.0 - 2021-10-14
 ### Added

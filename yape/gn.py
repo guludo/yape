@@ -115,7 +115,7 @@ class Node:
             if dep:
                 yield dep
 
-    def _get_node_descriptor(self) -> tuple[walkproto.Event]:
+    def _get_node_descriptor(self) -> ty.Tuple[walkproto.Event]:
         return walkproto.node_descriptor(self)
 
     def __getitem__(self, key):

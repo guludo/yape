@@ -21,7 +21,7 @@ from . import (
 
 _event_types = []
 
-def event_type(name: str, *fields: tuple[str]) -> type[collections.namedtuple]:
+def event_type(name: str, *fields: ty.Tuple[str]) -> type[collections.namedtuple]:
     """
     A factory function for creating types.
 
@@ -129,8 +129,8 @@ def walk_value(value: ty.Any, refs: dict) -> ty.Generator[Event]:
 
 
 def node_descriptor(node: gn.Node,
-                    cache: dict[gn.Node, tuple[Event]] = None,
-                    ) -> tuple[Event]:
+                    cache: ty.Dict[gn.Node, ty.Tuple[Event]] = None,
+                    ) -> ty.Tuple[Event]:
     if (cache is not None
             and not isinstance(node._op, nodeop.Value)
             and node in cache):
