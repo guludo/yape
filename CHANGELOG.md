@@ -8,6 +8,7 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 ## Unreleased
 ### Added
 - Parent directories for pathouts are created if necessary.
+- It is possible to create nodes that run commands with `yape.cmd()` now.
 
 ### Changed
 - **BREAKING**: Renamed parameter `graph` of `Node` constructor to `parent`.

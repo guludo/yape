@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import pathlib
+import subprocess
 
 from . import (
     gn,
@@ -108,6 +109,22 @@ def value(v: ty.Any = nodeop.UNSET, /, **kw) -> gn.Node:
 def data(payload: ty.Any, /, id: str = None, **kw) -> gn.Node:
     op = nodeop.Data(payload, id)
     return gn.Node(op, **kw)
+
+
+def _cmd_fn(args: ty.Union[str, list, tuple], **subprocess_run_kw):
+    if not isinstance(args, str):
+        args = tuple(str(arg) for arg in args)
+    return subprocess.run(args, **subprocess_run_kw)
+
+
+def cmd(args: ty.Union[str, list, tuple],
+        *,
+        node_kw: dict = None,
+        **subprocess_run_kw,
+        ) -> gn.Node:
+    if node_kw is None:
+        node_kw = {}
+    return fn(_cmd_fn, args=[args], kwargs=subprocess_run_kw, **node_kw)
 
 
 def run(*k, **kw):
