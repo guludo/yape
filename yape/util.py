@@ -79,8 +79,12 @@ ParsedTargetsSpec = ty.Union[
 
 
 def parse_targets(targets: TargetsSpec,
-                  graph: gn.Graph,
+                  graph: gn.Graph = None,
+                  no_global_graph: bool = False,
                   ) -> tuple[set[fn.Node], ParsedTargetsSpec]:
+    if not graph and not no_global_graph:
+        graph = gn._global_graph
+
     if targets is None:
         if not graph:
             raise ValueError('graph is required when targets is None')

@@ -13,6 +13,11 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - **BREAKING**: Nodes and graphs have the global graph as parent by default
     now. `no_parent=True` must be used if it is desired for the object not to
     have a parent.
+- **BREAKING**:
+  - `Runner` (and consequently `yape.run()`) use the global graph by
+    default now.
+  - `MingraphBuilder` (and consequently `yape.mingraph()`) use the global
+    graph by default now.
 
 ## 0.1.0 - 2021-10-14
 ### Added
