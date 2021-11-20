@@ -32,11 +32,11 @@ class Node:
             always: bool = False,
             pathins: ty.Iterable[pathlib.Path] = tuple(),
             pathouts: ty.Iterable[pathlib.Path] = tuple(),
-            graph: Graph = None,
+            parent: Graph = None,
             ):
-        if not graph:
+        if not parent:
             if _graph_build_stack:
-                graph = _graph_build_stack[-1]
+                parent = _graph_build_stack[-1]
 
         if name and '/' in name:
             raise ValueError(f'node name can not contain the slash character ("/"): {name}')
@@ -55,10 +55,10 @@ class Node:
         self._pathins = tuple(sorted(pathins))
         self._pathouts = tuple(sorted(pathouts))
 
-        self.__graph = graph
+        self.__parent = parent
 
-        if self.__graph:
-            self.__graph._Graph__add_node(self)
+        if self.__parent:
+            self.__parent._Graph__add_node(self)
         else:
             # Validate things if node is outside of a graph
             if self._name:
@@ -73,8 +73,8 @@ class Node:
             return None
 
         stack = [self._name]
-        g = self.__graph
-        root = self.__graph._Graph__root
+        g = self.__parent
+        root = self.__parent._Graph__root
         while g != root:
             stack.append(g.name)
             g = g._Graph__parent
@@ -106,7 +106,7 @@ class Node:
             if evt.type == 'Node':
                 yield evt.value
         for p in self._pathins:
-            dep = self.__graph.path_producer(p)
+            dep = self.__parent.path_producer(p)
             if dep:
                 yield dep
 
