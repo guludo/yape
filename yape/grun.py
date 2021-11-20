@@ -30,6 +30,8 @@ class Runner:
             targets: util.TargetsSpec = None,
             graph: gn.Graph = None,
             ns: nodestate.StateNamespace = None,
+            cached: bool = True,
+            cache_path: ty.Union[str, pathlib.Path] = None,
             ) -> RunResult:
         target_nodes, targets = util.parse_targets(targets, graph)
 
@@ -40,7 +42,13 @@ class Runner:
         node_state_ctx = contextlib.nullcontext()
         if not nodestate._current_namespace:
             if not ns:
-                ns = nodestate.StateNamespace()
+                if cached:
+                    if not cache_path:
+                        cache_path = nodestate.DEFAULT_DB_DIR
+                    db = nodestate.CachedStateDB(cache_path)
+                    ns = nodestate.StateNamespace(db)
+                else:
+                    ns = nodestate.StateNamespace()
             node_state_ctx = ns
 
         # Run nodes

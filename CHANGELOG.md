@@ -22,6 +22,9 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
   - `MingraphBuilder` (and consequently `yape.mingraph()`) use the global
     graph by default now.
 - **BREAKING**: default cache directory changed to `.yape/cache`.
+- **BREAKING**: `Runner` (and consequently `yape.run()`) now use cached node
+  state by default. In order to keep the behavior of `0.1.0` use
+  `cached=False` when calling `yape.run()`.
 
 ## 0.1.0 - 2021-10-14
 ### Added
