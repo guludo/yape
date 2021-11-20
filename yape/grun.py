@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import contextlib
+import pathlib
 
 from . import (
     gn,
@@ -49,6 +50,10 @@ class Runner:
                     continue
                 ctx = NodeContext(node)
                 resolved_op = walkproto.resolve_op(node._op, ctx)
+                for p in node._pathouts:
+                    p = pathlib.Path(p)
+                    if p.parent:
+                        p.parent.mkdir(parents=True, exist_ok=True)
                 result = nodeop.run_op(resolved_op)
                 nodestate.get_state(node).set_result(result)
                 for dep in node._get_dep_nodes():

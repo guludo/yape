@@ -6,6 +6,9 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Added
+- Parent directories for pathouts are created if necessary.
+
 ### Changed
 - **BREAKING**: Renamed parameter `graph` of `Node` constructor to `parent`.
     That way, we have both `Node` and `Graph` using the same parameter name
