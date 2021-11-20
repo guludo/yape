@@ -10,6 +10,9 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - **BREAKING**: Renamed parameter `graph` of `Node` constructor to `parent`.
     That way, we have both `Node` and `Graph` using the same parameter name
     for the graph containing them.
+- **BREAKING**: Nodes and graphs have the global graph as parent by default
+    now. `no_parent=True` must be used if it is desired for the object not to
+    have a parent.
 
 ## 0.1.0 - 2021-10-14
 ### Added

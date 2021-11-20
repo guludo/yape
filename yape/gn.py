@@ -33,10 +33,13 @@ class Node:
             pathins: ty.Iterable[pathlib.Path] = tuple(),
             pathouts: ty.Iterable[pathlib.Path] = tuple(),
             parent: Graph = None,
+            no_parent: bool = False,
             ):
         if not parent:
             if _graph_build_stack:
                 parent = _graph_build_stack[-1]
+            elif not no_parent:
+                parent = _global_graph
 
         if name and '/' in name:
             raise ValueError(f'node name can not contain the slash character ("/"): {name}')
@@ -141,6 +144,7 @@ class Graph:
     def __init__(self,
                 name: str = None,
                 parent: Graph = None,
+                no_parent: bool = False,
              ):
         if name and '/' in name:
             raise ValueError(f'graph name can not contain the slash character ("/"): {name}')
@@ -148,6 +152,8 @@ class Graph:
         if not parent:
             if _graph_build_stack:
                 parent = _graph_build_stack[-1]
+            elif not no_parent:
+                parent = _global_graph
 
         self.name = name
         self.__in_build_context = False
@@ -297,4 +303,4 @@ class CustomPickler(pickle.Pickler):
         return NotImplemented
 
 _graph_build_stack = []
-_global_graph = Graph()
+_global_graph = Graph(no_parent=True)
