@@ -21,6 +21,7 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
     default now.
   - `MingraphBuilder` (and consequently `yape.mingraph()`) use the global
     graph by default now.
+- **BREAKING**: default cache directory changed to `.yape/cache`.
 
 ## 0.1.0 - 2021-10-14
 ### Added

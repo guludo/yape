@@ -223,8 +223,11 @@ class StateNamespace:
         return walkproto.node_descriptor(node, self.__node_descriptor_cache)
 
 
+DEFAULT_DB_DIR = pathlib.Path('.yape', 'cache')
+
+
 class CachedStateDB:
-    def __init__(self, path: ty.Union[pathlib.Path, str] = 'db'):
+    def __init__(self, path: ty.Union[pathlib.Path, str] = DEFAULT_DB_DIR):
         self.__path = pathlib.Path(path)
 
     def __call__(self, node: gn.Node) -> State:
