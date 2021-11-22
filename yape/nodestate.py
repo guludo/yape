@@ -85,13 +85,13 @@ class CachedState(State):
     def __is_up_to_date(self) -> bool:
         # Do checks from the least to the most expensive
 
-        # 1. Check if state directory exists.
+        # Check if state directory exists.
         state_dir = self.__path / 'state'
         if not state_dir.is_dir():
             return False
 
-        # 2. Check if any input path has it modification time greater than the
-        #    state's timestamp.
+        # Check if any input path has it modification time greater than the
+        # state's timestamp.
         for p in self.node._pathins:
             pathin_mtime = datetime.datetime.fromtimestamp(
                 pathlib.Path(p).stat().st_mtime,
@@ -100,9 +100,14 @@ class CachedState(State):
             if pathin_mtime > self.get_timestamp():
                 return False
 
-        # 3. Check if nodes this node depends on are up to date (the
-        #    node_descriptor of such nodes are by definition smaller than this
-        #    node's).
+        # Check if output paths exist
+        for p in self.node._pathouts:
+            if not pathlib.Path(p).exists():
+                return False
+
+        # Check if nodes this node depends on are up to date (the
+        # node_descriptor of such nodes are by definition smaller than this
+        # node's).
         for dep in self.node._get_dep_nodes():
             dep_state = get_state(dep)
             if not dep_state.is_up_to_date():
@@ -110,9 +115,9 @@ class CachedState(State):
             if dep_state.get_timestamp() > self.get_timestamp():
                 return False
 
-        # 4. Finally, if this object was constructed with
-        #    ``check_saved_descriptor=True``, compare this node's
-        #    node_descriptor with the one saved in the state directory.
+        # Finally, if this object was constructed with
+        # ``check_saved_descriptor=True``, compare this node's node_descriptor
+        # with the one saved in the state directory.
         if self.__check_saved_descriptor:
             node_descriptor = self.node._get_node_descriptor()
             node_descriptor_path = self.__node_descriptor_path
