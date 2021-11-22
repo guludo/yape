@@ -100,9 +100,16 @@ class CachedState(State):
             if pathin_mtime > self.get_timestamp():
                 return False
 
-        # Check if output paths exist
+        # Check if output paths exist and that their modification time is not
+        # after the last time this node ran.
         for p in self.node._pathouts:
             if not pathlib.Path(p).exists():
+                return False
+            pathout_mtime = datetime.datetime.fromtimestamp(
+                pathlib.Path(p).stat().st_mtime,
+                tz=datetime.timezone.utc,
+            )
+            if pathout_mtime > self.get_timestamp():
                 return False
 
         # Check if nodes this node depends on are up to date (the
