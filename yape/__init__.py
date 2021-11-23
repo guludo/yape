@@ -122,8 +122,20 @@ def cmd(args: ty.Union[str, list, tuple],
         node_kw: dict = None,
         **subprocess_run_kw,
         ) -> gn.Node:
+
+    if not isinstance(args, str):
+        args = tuple(args)
+        name_prefix = args[0] if len(args) else None
+    else:
+        split = args.split(maxsplit=1)
+        name_prefix = split[0] if len(split) else None
+
     if node_kw is None:
         node_kw = {}
+
+    if 'name_prefix' not in node_kw:
+        node_kw['name_prefix'] = name_prefix
+
     return fn(_cmd_fn, args=[args], kwargs=subprocess_run_kw, **node_kw)
 
 
