@@ -32,6 +32,7 @@ class Runner:
             ns: nodestate.StateNamespace = None,
             cached: bool = True,
             cache_path: ty.Union[str, pathlib.Path] = None,
+            force: bool = False,
             ) -> RunResult:
         target_nodes, targets = util.parse_targets(targets, graph)
 
@@ -55,7 +56,8 @@ class Runner:
         with node_state_ctx:
             for node in nodes_to_run:
                 if not node._must_run():
-                    continue
+                    if not (force and node in target_nodes):
+                        continue
                 ctx = NodeContext(node)
                 resolved_op = walkproto.resolve_op(node._op, ctx)
                 for p in node._pathouts:

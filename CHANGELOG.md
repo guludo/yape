@@ -11,6 +11,8 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - It is possible to create nodes that run commands with `yape.cmd()` now.
 - In cached mode, Yape also checks for existence of output paths now.
 - `Node` has a new parameter: `name_prefix`.
+- It is now possible to force execution of target nodes by passing
+    `force=True` to the `run()` function.
 
 ### Changed
 - **BREAKING**: Renamed parameter `graph` of `Node` constructor to `parent`.
