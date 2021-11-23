@@ -29,6 +29,7 @@ class Node:
     def __init__(self,
             op: nodeop.NodeOp,
             name: str = None,
+            name_prefix: str = None,
             always: bool = False,
             pathins: ty.Iterable[pathlib.Path] = tuple(),
             pathouts: ty.Iterable[pathlib.Path] = tuple(),
@@ -46,6 +47,7 @@ class Node:
 
         self._op = op
         self._name = name
+        self._name_prefix = name_prefix
         self._always = always
 
         pathins = set(nodeop.PathIn(p) for p in pathins)
@@ -270,13 +272,18 @@ class Graph:
 
     def __add_node(self, node: Node):
         if not node._name:
-            if (isinstance(node._op, nodeop.Call)
-                    and hasattr(node._op.fn, '__name__')):
-                node._name = node._op.fn.__name__
-                if node._name in self.__name2node:
-                    node._name = f'{node._name}-{len(self.__nodes)}'
-            else:
-                node._name = f'unnamed-{len(self.__nodes)}'
+            prefix = node._name_prefix
+            if not prefix:
+                if (isinstance(node._op, nodeop.Call)
+                        and hasattr(node._op.fn, '__name__')):
+                    prefix = node._op.fn.__name__
+                else:
+                    prefix= 'unnamed'
+            idx = 0
+            node._name = prefix
+            while node._name in self.__name2node:
+                idx += 1
+                node._name = f'{prefix}-{idx}'
 
         if node._name in self.__name2node:
             msg = f'there is already a node named "{node._name}"'
