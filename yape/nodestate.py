@@ -239,8 +239,12 @@ DEFAULT_DB_DIR = pathlib.Path('.yape', 'cache')
 
 
 class CachedStateDB:
-    def __init__(self, path: ty.Union[pathlib.Path, str] = DEFAULT_DB_DIR):
+    def __init__(self,
+                 path: ty.Union[pathlib.Path, str] = DEFAULT_DB_DIR,
+                 hash_paranoid: bool = False,
+                 ):
         self.__path = pathlib.Path(path)
+        self.__hash_paranoid = hash_paranoid
 
     def __call__(self, node: gn.Node) -> State:
         entry_dir = self.__find_entry_dir(node)
@@ -263,11 +267,26 @@ class CachedStateDB:
         node_hash = hashlib.sha256(descriptor_bytes).hexdigest()
 
         bucket_dir = self.__path / 'entries' / node_hash
-        for entry_dir in bucket_dir.glob('*'):
-            with open(entry_dir / 'node_descriptor.pickle', 'rb') as f:
-                entry_node_descriptor = pickle.load(f)
-            if entry_node_descriptor == node_descriptor:
-                return entry_dir
+        entry_dirs = bucket_dir.glob('*')
+        if self.__hash_paranoid:
+            for entry_dir in entry_dirs:
+                    with open(entry_dir / 'node_descriptor.pickle', 'rb') as f:
+                        entry_node_descriptor = pickle.load(f)
+                    if entry_node_descriptor == node_descriptor:
+                        return entry_dir
+        else:
+            try:
+                entry_dir = next(entry_dirs)
+            except StopIteration:
+                pass
+            else:
+                try:
+                    next(entry_dirs)
+                except StopIteration:
+                    return entry_dir
+                else:
+                    msg = f'more than one entry dir found for {node} in {bucket_dir}'
+                    raise RuntimeError(msg)
 
         # Create a new entry
         entry_id = str(uuid.uuid4())
