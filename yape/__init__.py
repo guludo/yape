@@ -7,6 +7,7 @@ import pathlib
 import subprocess
 
 from . import (
+    climodule,
     gn,
     grun,
     mingraph,
@@ -142,3 +143,6 @@ def cmd(args: ty.Union[str, list, tuple],
 def run(*k, **kw):
     runner = grun.Runner()
     return runner.run(*k, **kw)
+
+
+cli = climodule.CLI()
