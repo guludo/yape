@@ -21,6 +21,8 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
     descriptors is applied after matching the SHA256 hashes. The default is
     `False`. This is useful when we do not want to load the saved descriptor
     from the file system.
+- Yape can now be used from the command line, either via `yape` or `python -m
+  yape`.
 
 ### Changed
 - **BREAKING**: Renamed parameter `graph` of `Node` constructor to `parent`.
