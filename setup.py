@@ -10,6 +10,9 @@ setuptools.setup(
     long_description=(pathlib.Path(__file__).parent / 'README.rst').read_text(),
     long_description_content_type='text/x-rst',
     packages=['yape'],
+    install_requires=[
+        'argparse-subdec~=0.1.0',
+    ],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
