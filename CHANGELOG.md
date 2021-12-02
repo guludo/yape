@@ -6,6 +6,10 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+- Nothing new yet
+
+
+## 0.2.0 - 2021-12-02
 ### Added
 - Parent directories for pathouts are created if necessary.
 - It is possible to create nodes that run commands with `yape.cmd()` now.
