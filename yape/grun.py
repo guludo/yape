@@ -33,6 +33,7 @@ class Runner:
             cached: bool = True,
             cache_path: ty.Union[str, pathlib.Path] = None,
             force: bool = False,
+            return_results: bool = True,
             ) -> RunResult:
         target_nodes, targets = util.parse_targets(targets, graph)
 
@@ -72,7 +73,9 @@ class Runner:
                         nodestate.get_state(dep).release()
 
             # Generate return value
-            if isinstance(targets, dict):
+            if not return_results:
+                return_value = None
+            elif isinstance(targets, dict):
                 return_value = {
                     k: n._result() for k, n in targets.items()
                 }
