@@ -6,7 +6,10 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
-- Nothing new yet
+### Fixed
+- Fixed wrong Python import in `climodule` that was cause the following error
+  when calling Yape from command line:
+  `AttributeError: module 'importlib' has no attribute 'util'`.
 
 
 ## 0.2.0 - 2021-12-02
