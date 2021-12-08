@@ -6,7 +6,9 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
-- Nothing new yet
+### Added
+- `Node` can now be used for generic type hint. Example: `Node[str]`
+  represents a node that will have a `str` as result.
 
 
 ## 0.2.1 - 2021-12-02

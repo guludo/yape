@@ -6,6 +6,7 @@ from __future__ import annotations
 import pathlib
 import logging
 import pickle
+import typing
 
 from . import (
     mingraph,
@@ -25,7 +26,10 @@ NodeName = ty.Union[str, ty.Iterable[str]]
 NodeRef = ty.Union[NodeName, 'Node']
 
 
-class Node:
+T = typing.TypeVar('T')
+
+
+class Node(typing.Generic[T]):
     def __init__(self,
             op: nodeop.NodeOp,
             name: str = None,
@@ -93,7 +97,7 @@ class Node:
     def _unset(self):
         self._set(nodeop.UNSET)
 
-    def _result(self) -> ty.Any:
+    def _result(self) -> T:
         return nodestate.get_state(self).get_result()
 
     def _must_run(self) -> bool:
