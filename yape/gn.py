@@ -73,7 +73,7 @@ class Node:
             if self._pathins:
                 raise ValueError('pathins are only allowed inside a graph')
 
-    def _fullname(self):
+    def _fullname(self) -> str:
         if not self._name:
             return None
 
@@ -93,7 +93,7 @@ class Node:
     def _unset(self):
         self._set(nodeop.UNSET)
 
-    def _result(self):
+    def _result(self) -> ty.Any:
         return nodestate.get_state(self).get_result()
 
     def _must_run(self) -> bool:
@@ -118,10 +118,10 @@ class Node:
     def _get_node_descriptor(self) -> ty.Tuple[walkproto.Event]:
         return walkproto.node_descriptor(self)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> Node:
         return Node(nodeop.GetItem(self, key))
 
-    def __getattr__(self, name):
+    def __getattr__(self, name) -> Node:
         if name in ('__getstate__', '__setstate__'):
             raise AttributeError('__setstate__ and __setstate__ are reserved for pickle')
         if isinstance(name, str) and name[0] == '_':
@@ -132,13 +132,13 @@ class Node:
             raise ValueError(msg)
         return Node(nodeop.GetAttr(self, name))
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> Node:
         return Node(nodeop.Call(self, args, kwargs))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f'<{self._fullname()}>'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f'Node({self._op})'
 
 
@@ -207,7 +207,7 @@ class Graph:
             CustomPickler(f).dump(self)
 
     @staticmethod
-    def load(path: ty.Union[pathlib.Path, str]):
+    def load(path: ty.Union[pathlib.Path, str]) -> Graph:
         with open(path, 'rb') as f:
             return pickle.load(f)
 
