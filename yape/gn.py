@@ -6,7 +6,7 @@ from __future__ import annotations
 import pathlib
 import logging
 import pickle
-import typing
+import types
 
 from . import (
     mingraphmod,
@@ -27,18 +27,18 @@ NodeName = ty.Union[str, ty.Iterable[str]]
 NodeRef = ty.Union[NodeName, 'Node']
 
 
-T = typing.TypeVar('T')
+T = ty.TypeVar('T')
 
 
-class Node(typing.Generic[T]):
+class Node(ty.Generic[T]):
     def __init__(self,
             op: nodeop.NodeOp,
-            name: str = None,
-            name_prefix: str = None,
+            name: ty.Optional[str] = None,
+            name_prefix: ty.Optional[str] = None,
             always: bool = False,
             pathins: ty.Iterable[pathlib.PurePath] = tuple(),
             pathouts: ty.Iterable[pathlib.PurePath] = tuple(),
-            parent: Graph = None,
+            parent: ty.Optional[Graph] = None,
             no_parent: bool = False,
             ):
         if not parent:
@@ -93,12 +93,12 @@ class Node(typing.Generic[T]):
             g = g._Graph__parent # type: ignore[attr-defined]
         return '/'.join(reversed(stack))
 
-    def _set(self, value):
+    def _set(self, value: ty.Any) -> None:
         if not isinstance(self._op, nodeop.Value):
             raise ValueError('a value for a node can be set or unset only for Value operators')
         self._op = nodeop.Value(value)
 
-    def _unset(self):
+    def _unset(self) -> None:
         self._set(nodeop.UNSET)
 
     def _result(self) -> T:
@@ -109,13 +109,13 @@ class Node(typing.Generic[T]):
             return True
         return not nodestate.get_state(self).is_up_to_date()
 
-    def __op_walk(self, op: nodeop.NodeOp = None,
+    def __op_walk(self, op: ty.Optional[nodeop.NodeOp] = None,
                   ) -> ty.Generator[walkproto.Event, None, None]:
         if not op:
             op = self._op
         yield from walkproto.walk(op)
 
-    def _get_dep_nodes(self) -> ty.Generator[Node, None, None]:
+    def _get_dep_nodes(self) -> ty.Generator[Node[ty.Any], None, None]:
         for evt in self.__op_walk():
             if isinstance(evt, walkproto.Node):
                 assert evt.value is not None
@@ -129,13 +129,13 @@ class Node(typing.Generic[T]):
     def _get_node_descriptor(self) -> walkproto.NodeDescriptor:
         return walkproto.node_descriptor(self)
 
-    def __getitem__(self, key) -> Node:
+    def __getitem__(self, key: ty.Any) -> Node[ty.Any]:
         return Node(nodeop.GetItem(self, key))
 
-    def __getattr__(self, name) -> Node:
+    def __getattr__(self, name: str) -> Node[ty.Any]:
         if name in ('__getstate__', '__setstate__'):
             raise AttributeError('__setstate__ and __setstate__ are reserved for pickle')
-        if isinstance(name, str) and name[0] == '_':
+        if name[0] == '_':
             msg = (
                 f'failed to get attribute {name!r}: '
                 'attributes starting with "_" are not supported via the dot operator (".")'
@@ -143,7 +143,7 @@ class Node(typing.Generic[T]):
             raise ValueError(msg)
         return Node(nodeop.GetAttr(self, name))
 
-    def __call__(self, *args, **kwargs) -> Node:
+    def __call__(self, *args: ty.Any, **kwargs: ty.Any) -> Node[ty.Any]:
         return Node(nodeop.Call(self, args, kwargs))
 
     def __str__(self) -> str:
@@ -155,8 +155,8 @@ class Node(typing.Generic[T]):
 
 class Graph:
     def __init__(self,
-                name: str = None,
-                parent: Graph = None,
+                name: ty.Optional[str] = None,
+                parent: ty.Optional[Graph] = None,
                 no_parent: bool = False,
              ):
         if name and '/' in name:
@@ -170,17 +170,17 @@ class Graph:
 
         self.name: ty.Optional[str] = name
         self.__in_build_context = False
-        self.__nodes: ty.List[Node] = []
+        self.__nodes: ty.List[Node[ty.Any]] = []
         self.__parent = parent
         self.__root: Graph = parent.__root if parent else self
         self.__graphs: ty.List[Graph] = []
 
-        self.__name2node: ty.Dict[str, ty.Union[Node, Graph]] = {}
+        self.__name2node: ty.Dict[str, ty.Union[Node[ty.Any], Graph]] = {}
         """
         A dictionary mapping strings to either `Node` or `Graph` instances.
         """
 
-        self.__pathout2node: ty.Dict[nodeop.PathOut, Node] = {}
+        self.__pathout2node: ty.Dict[nodeop.PathOut, Node[ty.Any]] = {}
         """
         A dictionary mapping `nodeop.PathOut` instances to nodes that declare
         to produce them. This object should not be consulted directly, use the
@@ -190,16 +190,21 @@ class Graph:
         if self.__parent:
             self.__parent.__add_graph(self)
 
-    def __enter__(self):
+    def __enter__(self) -> Graph:
         if self.__in_build_context:
             raise RuntimeError('graph already in build context')
         _graph_build_stack.append(self)
         self.__in_build_context = True
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self,
+                 exc_type: ty.Optional[ty.Type[BaseException]],
+                 exc_value: ty.Optional[BaseException],
+                 traceback: ty.Optional[types.TracebackType],
+                 ) -> ty.Optional[bool]:
         self.__in_build_context = False
         _graph_build_stack.pop()
+        return None
 
     def fullname(self) -> str:
         stack = []
@@ -213,7 +218,7 @@ class Graph:
             g = g.__parent
         return '/'.join(reversed(stack))
 
-    def save(self, path: ty.Union[pathlib.Path, str]):
+    def save(self, path: ty.Union[pathlib.Path, str]) -> None:
         if self.__in_build_context:
             msg = 'can not save a graph that is currently in build context'
             raise RuntimeError(msg)
@@ -224,9 +229,9 @@ class Graph:
     @staticmethod
     def load(path: ty.Union[pathlib.Path, str]) -> Graph:
         with open(path, 'rb') as f:
-            return pickle.load(f)
+            return ty.cast(Graph, pickle.load(f))
 
-    def node(self, path: NodeName) -> ty.Union[Node, Graph]:
+    def node(self, path: NodeName) -> ty.Union[Node[ty.Any], Graph]:
         if isinstance(path, str):
             parts = tuple(path.split('/'))
         else:
@@ -254,12 +259,12 @@ class Graph:
 
         return cur_graph.__name2node[node_name]
 
-    def recurse_nodes(self) -> ty.Generator[Node, None, None]:
+    def recurse_nodes(self) -> ty.Generator[Node[ty.Any], None, None]:
         yield from self.__nodes
         for g in self.__graphs:
             yield from g.recurse_nodes()
 
-    def path_producer(self, path: pathlib.Path) -> ty.Optional[Node]:
+    def path_producer(self, path: pathlib.Path) -> ty.Optional[Node[ty.Any]]:
         """
         Return the node that declares to produce the path `path` or None if there
         is no such node.
@@ -275,7 +280,7 @@ class Graph:
                  ) -> Graph:
         return mingraphmod.mingraph(unbounds, targets, graph=self)
 
-    def __add_graph(self, graph: Graph):
+    def __add_graph(self, graph: Graph) -> None:
         if not graph.name:
             graph.name = f'graph-{len(self.__graphs)}'
 
@@ -286,7 +291,7 @@ class Graph:
 
         self.__graphs.append(graph)
 
-    def __add_node(self, node: Node):
+    def __add_node(self, node: Node[ty.Any]) -> None:
         if not node._name:
             prefix = node._name_prefix
             if not prefix:
@@ -316,7 +321,9 @@ class Graph:
 
 
 class CustomPickler(pickle.Pickler):
-    def reducer_override(self, obj):
+    # NOTE: We should use types.NotImplementedType, but that is only supported
+    # starting at Python 3.10
+    def reducer_override(self, obj: ty.Any) -> ty.Any:
         if getattr(obj, '__module__', '') == '__main__':
             msg = (
                 f'the object {obj} is defined in the __main__ module, '

@@ -18,20 +18,23 @@ from . import (
 )
 
 
+T = ty.TypeVar('T')
+
+
 RunResult = ty.Union[
-    'ty.Any',
-    tuple,
-    ty.Dict[str, 'ty.Any'],
+    ty.Any,
+    ty.Tuple[ty.Any, ...],
+    ty.Dict[str, ty.Any],
 ]
 
 
 class Runner:
     def run(self,
-            targets: util.TargetsSpec = None,
-            graph: gn.Graph = None,
-            ns: nodestate.StateNamespace = None,
+            targets: ty.Optional[util.TargetsSpec] = None,
+            graph: ty.Optional[gn.Graph] = None,
+            ns: ty.Optional[nodestate.StateNamespace] = None,
             cached: bool = True,
-            cache_path: ty.Union[str, pathlib.Path] = None,
+            cache_path: ty.Union[str, pathlib.Path, None] = None,
             force: bool = False,
             return_results: bool = True,
             ) -> RunResult:
@@ -41,6 +44,8 @@ class Runner:
         nodes_to_run, dependant_counts = util.topological_sort(target_nodes)
 
         # Get or create the state namespace
+        node_state_ctx: ty.ContextManager[ty.Union[nodestate.StateNamespace,
+                                                   None]]
         node_state_ctx = contextlib.nullcontext()
         if not nodestate._current_namespace:
             if not ns:
@@ -88,9 +93,9 @@ class Runner:
         return return_value
 
 
-class NodeContext:
-    def __init__(self, node: gn.Node):
+class NodeContext(ty.Generic[T]):
+    def __init__(self, node: gn.Node[T]):
         self.__node = node
 
-    def workdir(self):
+    def workdir(self) -> ty.Optional[pathlib.Path]:
         return nodestate.get_state(self.__node).workdir()

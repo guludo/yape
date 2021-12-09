@@ -20,7 +20,7 @@ class Value(ty.NamedTuple):
 
 class GetItem(ty.NamedTuple):
     obj: ty.Any
-    key: str
+    key: ty.Any
 
 
 class GetAttr(ty.NamedTuple):
@@ -29,9 +29,9 @@ class GetAttr(ty.NamedTuple):
 
 
 class Call(ty.NamedTuple):
-    fn: ty.Callable
-    args: ty.Sequence
-    kwargs: ty.Mapping
+    fn: ty.Callable[..., ty.Any]
+    args: ty.Sequence[ty.Any]
+    kwargs: ty.Mapping[str, ty.Any]
 
 
 NodeOp = ty.Union[Data, Value, GetItem, GetAttr, Call]
@@ -50,10 +50,10 @@ class _CTX:
 
     singleton = None
 
-    def __new__(cls):
+    def __new__(cls) -> _CTX:
         if _CTX.singleton:
             return _CTX.singleton
-        r = super().__new__(cls)
+        r: _CTX = super().__new__(cls)
         _CTX.singleton = r
         return r
 
@@ -65,10 +65,10 @@ class _UNSET:
 
     singleton = None
 
-    def __new__(cls):
+    def __new__(cls) -> _UNSET:
         if _UNSET.singleton:
             return _UNSET.singleton
-        r = super().__new__(cls)
+        r: _UNSET = super().__new__(cls)
         _UNSET.singleton = r
         return r
 
@@ -76,7 +76,7 @@ class _UNSET:
 UNSET = _UNSET()
 
 
-def run_op(op):
+def run_op(op: NodeOp) -> ty.Any:
     if isinstance(op, Data):
         return op.payload
     elif isinstance(op, Value):

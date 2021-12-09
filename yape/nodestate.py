@@ -10,6 +10,7 @@ import pathlib
 import pickle
 import shutil
 import tempfile
+import types
 import uuid
 
 from . import (
@@ -19,30 +20,33 @@ from . import (
 )
 
 
-class State:
+T = ty.TypeVar('T')
+
+
+class State(ty.Generic[T]):
     def __init__(self,
-                 node: gn.Node,
-                 workdir: ty.Union[pathlib.Path, str] = None,
+                 node: gn.Node[T],
+                 workdir: ty.Union[pathlib.Path, str, None] = None,
                  ):
         self.node = node
         self.__workdir = pathlib.Path(workdir) if workdir else None
         self.__has_result = False
-        self.__result = None
+        self.__result: ty.Optional[T] = None
 
     def has_result(self) -> bool:
         return self.__has_result
 
-    def get_result(self) -> ty.Any:
+    def get_result(self) -> T:
         if not self.__has_result:
             msg = f'state for node {self.node} has no valid result'
             raise RuntimeError(msg)
-        return self.__result
+        return ty.cast(T, self.__result)
 
-    def set_result(self, result: ty.Any):
+    def set_result(self, result: T) -> None:
         self.__result = result
         self.__has_result = True
 
-    def release(self):
+    def release(self) -> None:
         self.__result = None
         self.__has_result = False
 
@@ -52,7 +56,7 @@ class State:
     def get_timestamp(self) -> datetime.datetime:
         raise NotImplementedError()
 
-    def workdir(self) -> ty.Union[pathlib.Path, None]:
+    def workdir(self) -> ty.Optional[pathlib.Path]:
         if not self.__workdir:
             return None
 
@@ -60,12 +64,12 @@ class State:
         return self.__workdir
 
 
-class CachedState(State):
+class CachedState(ty.Generic[T], State[T]):
     def __init__(self,
-                 node: gn.Node,
+                 node: gn.Node[ty.Any],
                  path: ty.Union[pathlib.Path, str],
-                 node_descriptor_path: ty.Union[pathlib.Path, str] = None,
-                 workdir: ty.Union[pathlib.Path, str] = None,
+                 node_descriptor_path: ty.Union[pathlib.Path, str, None] = None,
+                 workdir: ty.Union[pathlib.Path, str, None] = None,
                  check_saved_descriptor: bool = True
                  ):
         self.__path = pathlib.Path(path)
@@ -159,7 +163,7 @@ class CachedState(State):
         result_path = self.__path / 'state' / 'result.pickle'
         return result_path.exists()
 
-    def get_result(self) -> ty.Any:
+    def get_result(self) -> T:
         if not super().has_result():
             result_path = self.__path / 'state' / 'result.pickle'
             try:
@@ -171,7 +175,7 @@ class CachedState(State):
                 super().set_result(result)
         return super().get_result()
 
-    def set_result(self, result: ty.Any):
+    def set_result(self, result: T) -> None:
         self.__path.mkdir(exist_ok=True, parents=True)
 
         tmpdir = pathlib.Path(tempfile.mkdtemp(dir=self.__path))
@@ -194,45 +198,49 @@ class CachedState(State):
 
         super().set_result(result)
 
-    def release(self):
+    def release(self) -> None:
         self.__cached_is_up_to_date = None
         super().release()
 
 
 class StateNamespace:
-    def __init__(self, factory: ty.Callable[[gn.Node], State] = State):
-        self.__states: ty.Dict[gn.Node, State] = {}
-        self.__node_descriptor_cache: ty.Dict[gn.Node,
+    def __init__(self, factory: ty.Callable[[gn.Node[T]], State[T]] = State):
+        self.__states: ty.Dict[gn.Node[T], State[T]] = {}
+        self.__node_descriptor_cache: ty.Dict[gn.Node[ty.Any],
                                               walkproto.NodeDescriptor] = {}
         self.factory = factory
 
-    def get_state(self, node: gn.Node) -> State:
+    def get_state(self, node: gn.Node[T]) -> State[T]:
         current = self
         if node in self.__states:
             return self.__states[node]
         self.__states[node] = self.factory(node)
         return self.__states[node]
 
-    def __enter__(self):
+    def __enter__(self) -> StateNamespace:
         global _current_namespace
         if _current_namespace:
             raise RuntimeError('there is already a state namespace in place')
         _current_namespace = self
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self,
+                 exc_type: ty.Optional[ty.Type[BaseException]],
+                 exc_value: ty.Optional[BaseException],
+                 traceback: ty.Optional[types.TracebackType],
+                 ) -> ty.Optional[bool]:
         global _current_namespace
         _current_namespace = None
         self.__cleanup()
-        return False
+        return None
 
-    def __cleanup(self):
+    def __cleanup(self) -> None:
         for s in self.__states.values():
             s.release()
         self.__states = {}
         self.__node_descriptor_cache = {}
 
-    def get_node_descriptor(self, node):
+    def get_node_descriptor(self, node: gn.Node[ty.Any]) -> walkproto.NodeDescriptor:
         return walkproto.node_descriptor(node, self.__node_descriptor_cache)
 
 
@@ -247,7 +255,7 @@ class CachedStateDB:
         self.__path = pathlib.Path(path)
         self.__hash_paranoid = hash_paranoid
 
-    def __call__(self, node: gn.Node) -> State:
+    def __call__(self, node: gn.Node[T]) -> State[T]:
         entry_dir = self.__find_entry_dir(node)
         return CachedState(
             node,
@@ -259,7 +267,7 @@ class CachedStateDB:
             check_saved_descriptor=False,
         )
 
-    def __find_entry_dir(self, node: gn.Node) -> pathlib.Path:
+    def __find_entry_dir(self, node: gn.Node[ty.Any]) -> pathlib.Path:
         if _current_namespace:
             node_descriptor = _current_namespace.get_node_descriptor(node)
         else:
@@ -301,10 +309,10 @@ class CachedStateDB:
         return entry_dir
 
 
-def get_state(node: gn.Node) -> State:
+def get_state(node: gn.Node[T]) -> State[T]:
     if not _current_namespace:
         raise RuntimeError('not in a state namespace context')
     return _current_namespace.get_state(node)
 
 
-_current_namespace = None
+_current_namespace: ty.Optional[StateNamespace] = None

@@ -1,6 +1,9 @@
-from . import cli
+from . import (
+    cli,
+    ty,
+)
 
-def run():
+def run() -> ty.NoReturn:
     exit(cli.run())
 
 if __name__ == '__main__':

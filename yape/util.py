@@ -11,15 +11,18 @@ from . import (
 )
 
 
-def topological_sort(target_nodes: ty.Iterable[gn.Node],
-                     ) -> ty.Tuple[ty.List[gn.Node], collections.Counter]:
-    visited: ty.Set[gn.Node] = set()
-    visiting: ty.Set[gn.Node] = set()
-    sorted_nodes: ty.List[gn.Node] = []
-    path: ty.List[gn.Node] = []
-    dependant_counts: collections.Counter[gn.Node] = collections.Counter()
+def topological_sort(target_nodes: ty.Iterable[gn.Node[ty.Any]],
+                     ) -> ty.Tuple[ty.List[gn.Node[ty.Any]],
+                                   collections.Counter[gn.Node[ty.Any]]]:
+    visited: ty.Set[gn.Node[ty.Any]] = set()
+    visiting: ty.Set[gn.Node[ty.Any]] = set()
+    sorted_nodes: ty.List[gn.Node[ty.Any]] = []
+    path: ty.List[gn.Node[ty.Any]] = []
 
-    stack: ty.List[ty.Tuple[gn.Node, ty.Union[None, ty.List[gn.Node]]]]
+    dependant_counts: collections.Counter[gn.Node[ty.Any]]
+    dependant_counts = collections.Counter()
+
+    stack: ty.List[ty.Tuple[gn.Node[ty.Any], ty.Optional[ty.List[gn.Node[ty.Any]]]]]
     stack = [(node, None) for node in target_nodes]
 
     while stack:
@@ -68,23 +71,23 @@ def topological_sort(target_nodes: ty.Iterable[gn.Node],
 
 TargetsSpec = ty.Union[
     'gn.NodeRef',
-    ty.Callable,
+    ty.Callable[..., ty.Any],
     ty.Sequence['gn.NodeRef'],
     ty.Mapping[str, 'gn.NodeRef'],
 ]
 
 
 ParsedTargetsSpec = ty.Union[
-    'gn.Node',
-    ty.Tuple['gn.Node', ...],
-    ty.Dict[str, 'gn.Node'],
+    'gn.Node[ty.Any]',
+    ty.Tuple['gn.Node[ty.Any]', ...],
+    ty.Dict[str, 'gn.Node[ty.Any]'],
 ]
 
 
 def parse_targets(targets: ty.Optional[TargetsSpec],
-                  graph: gn.Graph = None,
+                  graph: ty.Optional[gn.Graph] = None,
                   no_global_graph: bool = False,
-                  ) -> ty.Tuple[ty.Set[gn.Node], ParsedTargetsSpec]:
+                  ) -> ty.Tuple[ty.Set[gn.Node[ty.Any]], ParsedTargetsSpec]:
     if not graph and not no_global_graph:
         graph = gn._global_graph
     if targets is None:
@@ -92,7 +95,8 @@ def parse_targets(targets: ty.Optional[TargetsSpec],
             raise ValueError('graph is required when targets is None')
         targets = tuple(graph.recurse_nodes())
 
-    def get_node(ref: gn.NodeRef, graph: ty.Union[gn.Graph, None]) -> gn.Node:
+    def get_node(ref: gn.NodeRef, graph: ty.Optional[gn.Graph]
+                 ) -> gn.Node[ty.Any]:
         if isinstance(ref, gn.Node):
             return ref
         else:

@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib.abc
+import importlib.machinery
 import importlib.util
 import pathlib
 import sys
 
-import argparse_subdec # type: ignore
+import argparse_subdec
 
 from . import (
     gn,
@@ -20,14 +22,14 @@ from . import (
 class CLI:
     SD = argparse_subdec.SubDec(name_prefix='__cmd_', fn_dest='core_fn')
 
-    def __init__(self, graph: gn.Graph = None):
+    def __init__(self, graph: ty.Optional[gn.Graph] = None):
         if graph is None:
             graph = gn._global_graph
         self.__graph = graph
         self.__runner = grun.Runner()
         self.__init_parser()
 
-    def run(self, argv: ty.Sequence[str] = None) -> int:
+    def run(self, argv: ty.Optional[ty.Sequence[str]] = None) -> int:
         self.__args = self.__parse_args(argv)
         self.__load_yp()
 
@@ -38,13 +40,13 @@ class CLI:
         self.__args.core_fn(self)
         return 0
 
-    def set_graph(self, graph: gn.Graph):
+    def set_graph(self, graph: gn.Graph) -> None:
         self.__graph = graph
 
-    def set_runner(self, runner: grun.Runner):
+    def set_runner(self, runner: grun.Runner) -> None:
         self.__runner = runner
 
-    def __init_parser(self):
+    def __init_parser(self) -> None:
         self.__parser = argparse.ArgumentParser(description='Run Yape!')
 
         self.__parser.add_argument(
@@ -62,16 +64,19 @@ class CLI:
 
         CLI.SD.create_parsers(self.__subparsers)
 
-    def __parse_args(self, argv: ty.Optional[ty.Sequence[str]]):
+    def __parse_args(self,
+                     argv: ty.Optional[ty.Sequence[str]],
+                     ) -> argparse.Namespace:
         if argv is None:
             argv = sys.argv[1:]
         argv = list(argv)
         return self.__parser.parse_args(argv)
 
-    def __load_yp(self):
+    def __load_yp(self) -> None:
         name = self.__args.core_yp
         sys.path = ['.'] + sys.path
         try:
+            spec: ty.Optional[importlib.machinery.ModuleSpec]
             spec = importlib.util.find_spec(name)
             if not spec:
                 spec = importlib.util.spec_from_file_location('yp', name)
@@ -80,7 +85,8 @@ class CLI:
                 raise RuntimeError(f'failed to find module or file: {name}')
 
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            loader = ty.cast(importlib.abc.Loader, spec.loader)
+            loader.exec_module(module)
         finally:
             if sys.path and sys.path[0] == '.':
                 sys.path = sys.path[1:]
@@ -109,7 +115,7 @@ class CLI:
         Run nodes even if cached results are up to date.
         """
     )
-    def __cmd_run(self):
+    def __cmd_run(self) -> None:
         targets = getattr(self.__args, 'run_targets', None)
         if not targets:
             targets = None
@@ -126,6 +132,6 @@ class CLI:
         List available targets.
         """
     )
-    def __cmd_list(self):
+    def __cmd_list(self) -> None:
         for node in self.__graph.recurse_nodes():
             print(node._fullname())

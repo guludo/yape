@@ -46,7 +46,7 @@ class PathIn(ty.NamedTuple):
 
 class Node(ty.NamedTuple):
     type: str
-    value: ty.Union[gn.Node, None]
+    value: ty.Union[gn.Node[ty.Any], None]
 
 class CTX(ty.NamedTuple):
     type: str
@@ -64,7 +64,7 @@ class List(ty.NamedTuple):
 
 class Dict(ty.NamedTuple):
     type: str
-    keys: tuple
+    keys: ty.Tuple[ty.Any, ...]
 
 class Other(ty.NamedTuple):
     type: str
@@ -112,11 +112,12 @@ Event = ty.Union[
 
 
 _EvtT = ty.TypeVar('_EvtT', bound=Event)
-def _event(cls: ty.Callable[..., _EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
-    return cls(cls.__name__, *k, **kw)
+#def _event(cls: ty.Callable[..., _EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
+def _event(cls: ty.Type[_EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
+    return ty.cast(ty.Callable[..., _EvtT], cls)(cls.__name__, *k, **kw)
 
 
-def walk(op: nodeop.NodeOp):
+def walk(op: nodeop.NodeOp) -> ty.Generator[Event, None, None]:
     refs: ty.Dict[int, int] = {}
     yield _event(OpType, type(op))
     if isinstance(op, nodeop.Data):
@@ -174,8 +175,9 @@ def walk_value(value: ty.Any,
 NodeDescriptor = ty.Tuple[ty.Union[Event, ty.Any], ...]
 
 
-def node_descriptor(node: gn.Node,
-                    cache: ty.Dict[gn.Node, NodeDescriptor] = None,
+def node_descriptor(node: gn.Node[ty.Any],
+                    cache: ty.Optional[ty.Dict[gn.Node[ty.Any],
+                                               NodeDescriptor]] = None,
                     ) -> NodeDescriptor:
     if (cache is not None
             and not isinstance(node._op, nodeop.Value)
@@ -223,8 +225,9 @@ def node_descriptor(node: gn.Node,
 
 
 def resolve_op(op: nodeop.NodeOp,
-               ctx: grun.NodeContext,
-               custom_atom_resolver: ty.Callable = None,
+               ctx: ty.Optional[grun.NodeContext[ty.Any]],
+               custom_atom_resolver: ty.Optional[ty.Callable[[Event],
+                                                             ty.Any]] = None,
                ) -> nodeop.NodeOp:
     return OpResolver(op, ctx, custom_atom_resolver).resolve()
 
@@ -232,12 +235,12 @@ def resolve_op(op: nodeop.NodeOp,
 class _UNRESOLVED:
     __slots__: ty.List[str] = []
 
-    singleton = None
+    singleton: ty.Optional[_UNRESOLVED] = None
 
-    def __new__(cls):
+    def __new__(cls) -> _UNRESOLVED:
         if _UNRESOLVED.singleton:
             return _UNRESOLVED.singleton
-        r = super().__new__(cls)
+        r = ty.cast(_UNRESOLVED, super().__new__(cls))
         _UNRESOLVED.singleton = r
         return r
 
@@ -252,27 +255,31 @@ Special value to be returned by custom atom resolvers
 class OpResolver:
     def __init__(self,
                  op: nodeop.NodeOp,
-                 ctx: grun.NodeContext,
-                 custom_atom_resolver: ty.Callable = None,
+                 ctx: ty.Optional[grun.NodeContext[ty.Any]],
+                 custom_atom_resolver: ty.Optional[ty.Callable[[Event],
+                                                               ty.Any]] = None,
                  ):
         self.__ctx = ctx
         self.__op = op
         self.__cache: ty.Dict[int, ty.Any] = {}
         self.custom_atom_resolver = custom_atom_resolver
 
-    def resolve(self):
+    def resolve(self) -> nodeop.NodeOp:
         if isinstance(self.__op, nodeop.Data):
             return self.__op
         self.__events = walk(self.__op)
         return self.__resolve_op()
 
     def __resolve_op(self) -> nodeop.NodeOp:
-        op_type = next(self.__events).value
+        e = next(self.__events)
+        assert isinstance(e, OpType)
+        op_type = e.value
         num_args = len(op_type._fields)
         args = [None] * num_args
         for i in range(num_args):
             args[i] = self.__resolve_value()
-        return op_type(*args)
+        constructor = ty.cast(ty.Callable[..., nodeop.NodeOp], op_type)
+        return constructor(*args)
 
     def __resolve_value(self) -> ty.Any:
         evt = next(self.__events)
@@ -280,6 +287,7 @@ class OpResolver:
             return self.__cache[evt.id]
 
         # Otherwise, evt will be a ValueId
+        assert isinstance(evt, ValueId)
         value_id = evt.id
 
         resolved: ty.Any
@@ -298,12 +306,17 @@ class OpResolver:
             for k in keys:
                 resolved[k] = self.__resolve_value()
         else:
-            resolved = self.__resolve_atom(evt)
+            # XXX: this cast() call should not be necessary, however mypy is
+            # giving a strange error, saying that ``evt`` has incompatible
+            # type. It says that the actual type of ``evt`` is a union (listing
+            # ``Other`` repeated times in the union list) and that the
+            # ``Event`` union was expected.
+            resolved = self.__resolve_atom(ty.cast(Event, evt))
 
         self.__cache[value_id] = resolved
         return resolved
 
-    def __resolve_atom(self, evt):
+    def __resolve_atom(self, evt: Event) -> ty.Any:
         if self.custom_atom_resolver:
             resolved = self.custom_atom_resolver(evt)
             if resolved is not UNRESOLVED:
@@ -312,6 +325,7 @@ class OpResolver:
         if isinstance(evt, (PathOut, PathIn)):
             resolved = pathlib.Path(evt.value)
         elif isinstance(evt, Node):
+            assert evt.value is not None
             resolved = evt.value._result()
         elif isinstance(evt, CTX):
             resolved = self.__ctx

@@ -12,10 +12,13 @@ from . import (
 )
 
 
+T = ty.TypeVar('T')
+
+
 def mingraph(unbounds: util.TargetsSpec,
              targets: util.TargetsSpec,
-             graph: gn.Graph = None,
-             dest: gn.Graph = None,
+             graph: ty.Optional[gn.Graph] = None,
+             dest: ty.Optional[gn.Graph] = None,
              ) -> gn.Graph:
     return MingraphBuilder(unbounds, targets, graph, dest).build()
 
@@ -24,8 +27,8 @@ class MingraphBuilder:
     def __init__(self,
                  unbounds: util.TargetsSpec,
                  targets: util.TargetsSpec,
-                 graph: gn.Graph = None,
-                 dest: gn.Graph = None,
+                 graph: ty.Optional[gn.Graph] = None,
+                 dest: ty.Optional[gn.Graph] = None,
                  ):
         to_be_unbound, unbounds = util.parse_targets(unbounds, graph)
         target_nodes, targets = util.parse_targets(targets, graph)
@@ -35,22 +38,24 @@ class MingraphBuilder:
         self.__target_nodes = target_nodes
         self.__targets = targets
         self.__dest = dest or gn.Graph()
-        self.__new_nodes_cache: ty.Dict[gn.Node, gn.Node] = {}
+        self.__new_nodes_cache: ty.Dict[gn.Node[ty.Any], gn.Node[ty.Any]] = {}
 
         # Dictionary that will tell whether a node transitively depends on a
         # node to be unbound. This is used as cache for the method
         # __depends_on_unbound()
-        self.__depends_on_unbound_cache: ty.Dict[gn.Node, bool] = {}
+        self.__depends_on_unbound_cache: ty.Dict[gn.Node[ty.Any], bool] = {}
 
         self.__generate_future_names()
 
-    def build(self):
+    def build(self) -> gn.Graph:
         with self.__dest:
             for node in self.__target_nodes:
                 self.__get_new_node(node)
         return self.__dest
 
-    def __get_new_node(self, node):
+    def __get_new_node(self,
+                       node: gn.Node[T],
+                       ) -> gn.Node[ty.Union[T, nodeop._UNSET]]:
         if node in self.__new_nodes_cache:
             return self.__new_nodes_cache[node]
 
@@ -69,11 +74,15 @@ class MingraphBuilder:
         else:
             op = nodeop.Data(node._result(), id=None)
 
+        new_node: gn.Node[ty.Union[T, nodeop._UNSET]]
         new_node = gn.Node(op, name=self.__future_names.get(node))
         self.__new_nodes_cache[node] = new_node
         return new_node
 
-    def __depends_on_unbound(self, node: gn.Node, visited=None) -> bool:
+    def __depends_on_unbound(self,
+                             node: gn.Node[ty.Any],
+                             visited: ty.Optional[ty.Set[gn.Node[ty.Any]]] = None,
+                             ) -> bool:
         if node in self.__depends_on_unbound_cache:
             return self.__depends_on_unbound_cache[node]
 
@@ -99,6 +108,7 @@ class MingraphBuilder:
 
     def __custom_atom_resolver(self, evt: walkproto.Event) -> ty.Any:
         if isinstance(evt, walkproto.Node):
+            assert evt.value is not None
             return self.__get_new_node(evt.value)
         elif isinstance(evt, (walkproto.PathOut, walkproto.PathIn)):
             return evt.value
@@ -107,8 +117,8 @@ class MingraphBuilder:
         else:
             return walkproto.UNRESOLVED
 
-    def __generate_future_names(self):
-        self.__future_names = {}
+    def __generate_future_names(self) -> None:
+        self.__future_names: ty.Dict[gn.Node[ty.Any], str] = {}
 
         if isinstance(self.__unbounds, dict):
             for name, node in self.__unbounds.items():
