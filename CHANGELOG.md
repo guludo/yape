@@ -7,6 +7,7 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 
 ## Unreleased
 ### Added
+- Added support for type hints.
 - `Node` can now be used for generic type hint. Example: `Node[str]`
   represents a node that will have a `str` as result.
 

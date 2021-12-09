@@ -10,11 +10,14 @@ from . import (
     climodule,
     gn,
     grun,
-    mingraph,
+    mingraphmod,
     nodeop,
     nodestate,
     ty,
 )
+
+
+T = ty.TypeVar('T')
 
 
 PathIn = nodeop.PathIn
@@ -41,12 +44,17 @@ StateNamespace = nodestate.StateNamespace
 CachedStateDB = nodestate.CachedStateDB
 
 
+Node = gn.Node
+
+
+Graph = gn.Graph
+
 
 def graph(**kw) -> gn.Graph:
     return gn.Graph(**kw)
 
 
-mingraph = mingraph.mingraph
+mingraph = mingraphmod.mingraph
 
 
 def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
@@ -56,12 +64,32 @@ def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
     return gn.Graph.load(path)
 
 
+# TODO: use ParamSpec instead of ... for callables once that is supported in
+# pytype.
+@ty.overload
 def gr(nodegen: ty.Callable,
        /,
-       args=None,
-       kwargs=None,
+       args: None = None,
+       kwargs: None = None,
+       **kw) -> ty.Callable[..., gn.Graph]:
+    ...
+@ty.overload
+def gr(nodegen: ty.Callable,
+       /,
+       args: ty.Sequence,
+       kwargs: None,
        **kw,
-       ) -> ty.Union[ty.Callable, gn.Graph]:
+       ) -> gn.Graph:
+    ...
+@ty.overload
+def gr(nodegen: ty.Callable,
+       /,
+       args: ty.Sequence,
+       kwargs: ty.Mapping,
+       **kw,
+       ) -> gn.Graph:
+    ...
+def gr(nodegen, /, args=None, kwargs=None, **kw):
     def graph_creator(*nodegen_args, **nodegen_kwargs) -> gn.Graph:
         g = gn.Graph(**kw)
         with g:
@@ -80,13 +108,30 @@ def gr(nodegen: ty.Callable,
     return graph_creator(*args, **kwargs)
 
 
-def fn(f: ty.Any,
+@ty.overload
+def fn(f: ty.Callable[..., T],
        /,
-       args=None,
-       kwargs=None,
+       args: None = None,
+       kwargs: None = None,
+       **kw) -> ty.Callable[..., gn.Node[T]]:
+    ...
+@ty.overload
+def fn(f: ty.Callable[..., T],
+       /,
+       args: ty.Sequence,
        **kw,
-       ) -> ty.Union[ty.Callable, gn.Node]:
-    def node_creator(*call_args, **call_kwargs) -> gn.Node:
+       ) -> gn.Node[T]:
+    ...
+@ty.overload
+def fn(f: ty.Callable[..., T],
+       /,
+       args: ty.Sequence,
+       kwargs: ty.Mapping,
+       **kw,
+       ) -> gn.Node[T]:
+    ...
+def fn(f, /, args=None, kwargs=None, **kw):
+    def node_creator(*call_args, **call_kwargs) -> gn.Node[T]:
         op = nodeop.Call(f, call_args, call_kwargs)
         return gn.Node(op, **kw)
 
@@ -102,12 +147,18 @@ def fn(f: ty.Any,
     return node_creator(*args, **kwargs)
 
 
-def value(v: ty.Any = nodeop.UNSET, /, **kw) -> gn.Node:
+@ty.overload
+def value(v: T, /, **kw) -> gn.Node[T]:
+    ...
+@ty.overload
+def value(**kw) -> gn.Node[nodeop._UNSET]:
+    ...
+def value(v=nodeop.UNSET, /, **kw):
     op = nodeop.Value(v)
     return gn.Node(op, **kw)
 
 
-def data(payload: ty.Any, /, id: str = None, **kw) -> gn.Node:
+def data(payload: T, /, id: str = None, **kw) -> gn.Node[T]:
     op = nodeop.Data(payload, id)
     return gn.Node(op, **kw)
 

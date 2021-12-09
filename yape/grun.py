@@ -53,6 +53,7 @@ class Runner:
                     ns = nodestate.StateNamespace()
             node_state_ctx = ns
 
+        return_value: RunResult
         # Run nodes
         with node_state_ctx:
             for node in nodes_to_run:
@@ -61,8 +62,8 @@ class Runner:
                         continue
                 ctx = NodeContext(node)
                 resolved_op = walkproto.resolve_op(node._op, ctx)
-                for p in node._pathouts:
-                    p = pathlib.Path(p)
+                for pout in node._pathouts:
+                    p = pathlib.Path(pout)
                     if p.parent:
                         p.parent.mkdir(parents=True, exist_ok=True)
                 result = nodeop.run_op(resolved_op)

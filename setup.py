@@ -10,6 +10,9 @@ setuptools.setup(
     long_description=(pathlib.Path(__file__).parent / 'README.rst').read_text(),
     long_description_content_type='text/x-rst',
     packages=['yape'],
+    package_data={
+        'yape': ['py.typed'],
+    },
     entry_points={
         'console_scripts': [
             'yape = yape.__main__:run',
@@ -18,6 +21,11 @@ setuptools.setup(
     install_requires=[
         'argparse-subdec~=0.1.0',
     ],
+    extras_require={
+        'dev': [
+            'mypy>=0.910<1.0',
+        ],
+    },
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',

@@ -8,7 +8,7 @@ import importlib.util
 import pathlib
 import sys
 
-import argparse_subdec
+import argparse_subdec # type: ignore
 
 from . import (
     gn,
@@ -62,7 +62,7 @@ class CLI:
 
         CLI.SD.create_parsers(self.__subparsers)
 
-    def __parse_args(self, argv: ty.Sequence[str]):
+    def __parse_args(self, argv: ty.Optional[ty.Sequence[str]]):
         if argv is None:
             argv = sys.argv[1:]
         argv = list(argv)

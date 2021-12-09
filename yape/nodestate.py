@@ -49,8 +49,8 @@ class State:
     def is_up_to_date(self) -> bool:
         return False
 
-    def get_timestamp(self) -> ty.Union[datetime.datetime, None]:
-        return None
+    def get_timestamp(self) -> datetime.datetime:
+        raise NotImplementedError()
 
     def workdir(self) -> ty.Union[pathlib.Path, None]:
         if not self.__workdir:
@@ -63,14 +63,14 @@ class State:
 class CachedState(State):
     def __init__(self,
                  node: gn.Node,
-                 path: ty.Union[pathlib.Path, str] = None,
+                 path: ty.Union[pathlib.Path, str],
                  node_descriptor_path: ty.Union[pathlib.Path, str] = None,
                  workdir: ty.Union[pathlib.Path, str] = None,
                  check_saved_descriptor: bool = True
                  ):
-        self.__path = pathlib.Path(path) if path else None
-        self.__cached_is_up_to_date = None
-        self.__cached_result_mtime = None
+        self.__path = pathlib.Path(path)
+        self.__cached_is_up_to_date: ty.Optional[bool] = None
+        self.__cached_result_mtime: ty.Optional[datetime.datetime] = None
         self.__check_saved_descriptor = check_saved_descriptor
 
         self.__node_descriptor_path = None
@@ -78,7 +78,7 @@ class CachedState(State):
             self.__node_descriptor_path = pathlib.Path(node_descriptor_path)
 
         if not workdir and self.__path:
-            workdir = path / 'workdir'
+            workdir = self.__path / 'workdir'
 
         super().__init__(node, workdir)
 
@@ -92,9 +92,9 @@ class CachedState(State):
 
         # Check if any input path has it modification time greater than the
         # state's timestamp.
-        for p in self.node._pathins:
+        for p_in in self.node._pathins:
             pathin_mtime = datetime.datetime.fromtimestamp(
-                pathlib.Path(p).stat().st_mtime,
+                pathlib.Path(p_in).stat().st_mtime,
                 tz=datetime.timezone.utc,
             )
             if pathin_mtime > self.get_timestamp():
@@ -102,11 +102,11 @@ class CachedState(State):
 
         # Check if output paths exist and that their modification time is not
         # after the last time this node ran.
-        for p in self.node._pathouts:
-            if not pathlib.Path(p).exists():
+        for p_out in self.node._pathouts:
+            if not pathlib.Path(p_out).exists():
                 return False
             pathout_mtime = datetime.datetime.fromtimestamp(
-                pathlib.Path(p).stat().st_mtime,
+                pathlib.Path(p_out).stat().st_mtime,
                 tz=datetime.timezone.utc,
             )
             if pathout_mtime > self.get_timestamp():
@@ -177,7 +177,7 @@ class CachedState(State):
         tmpdir = pathlib.Path(tempfile.mkdtemp(dir=self.__path))
         try:
             if not self.__node_descriptor_path:
-                with open(tmpdir / 'node_descriptor.pickle') as f:
+                with open(tmpdir / 'node_descriptor.pickle', 'wb') as f:
                     node_descriptor = self.node._get_node_descriptor()
                     pickle.dump(node_descriptor, f)
 
@@ -200,9 +200,10 @@ class CachedState(State):
 
 
 class StateNamespace:
-    def __init__(self, factory: Callable[[gn.Node], State] = State):
-        self.__states = {}
-        self.__node_descriptor_cache = {}
+    def __init__(self, factory: ty.Callable[[gn.Node], State] = State):
+        self.__states: ty.Dict[gn.Node, State] = {}
+        self.__node_descriptor_cache: ty.Dict[gn.Node,
+                                              walkproto.NodeDescriptor] = {}
         self.factory = factory
 
     def get_state(self, node: gn.Node) -> State:

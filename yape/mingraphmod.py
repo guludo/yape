@@ -24,8 +24,8 @@ class MingraphBuilder:
     def __init__(self,
                  unbounds: util.TargetsSpec,
                  targets: util.TargetsSpec,
-                 graph: fn.Graph = None,
-                 dest: fn.Graph = None,
+                 graph: gn.Graph = None,
+                 dest: gn.Graph = None,
                  ):
         to_be_unbound, unbounds = util.parse_targets(unbounds, graph)
         target_nodes, targets = util.parse_targets(targets, graph)
@@ -35,12 +35,12 @@ class MingraphBuilder:
         self.__target_nodes = target_nodes
         self.__targets = targets
         self.__dest = dest or gn.Graph()
-        self.__new_nodes_cache = {}
+        self.__new_nodes_cache: ty.Dict[gn.Node, gn.Node] = {}
 
         # Dictionary that will tell whether a node transitively depends on a
         # node to be unbound. This is used as cache for the method
         # __depends_on_unbound()
-        self.__depends_on_unbound_cache = {}
+        self.__depends_on_unbound_cache: ty.Dict[gn.Node, bool] = {}
 
         self.__generate_future_names()
 
@@ -73,7 +73,7 @@ class MingraphBuilder:
         self.__new_nodes_cache[node] = new_node
         return new_node
 
-    def __depends_on_unbound(self, node: ng.Node, visited=None) -> bool:
+    def __depends_on_unbound(self, node: gn.Node, visited=None) -> bool:
         if node in self.__depends_on_unbound_cache:
             return self.__depends_on_unbound_cache[node]
 

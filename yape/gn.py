@@ -9,10 +9,11 @@ import pickle
 import typing
 
 from . import (
-    mingraph,
+    mingraphmod,
     nodeop,
     nodestate,
     ty,
+    util,
     walkproto,
 )
 
@@ -35,8 +36,8 @@ class Node(typing.Generic[T]):
             name: str = None,
             name_prefix: str = None,
             always: bool = False,
-            pathins: ty.Iterable[pathlib.Path] = tuple(),
-            pathouts: ty.Iterable[pathlib.Path] = tuple(),
+            pathins: ty.Iterable[pathlib.PurePath] = tuple(),
+            pathouts: ty.Iterable[pathlib.PurePath] = tuple(),
             parent: Graph = None,
             no_parent: bool = False,
             ):
@@ -49,25 +50,25 @@ class Node(typing.Generic[T]):
         if name and '/' in name:
             raise ValueError(f'node name can not contain the slash character ("/"): {name}')
 
-        self._op = op
+        self._op: nodeop.NodeOp = op
         self._name = name
         self._name_prefix = name_prefix
         self._always = always
 
-        pathins = set(nodeop.PathIn(p) for p in pathins)
-        pathouts = set(nodeop.PathOut(p) for p in pathouts)
+        pins = set(nodeop.PathIn(p) for p in pathins)
+        pouts = set(nodeop.PathOut(p) for p in pathouts)
         for evt in self.__op_walk():
-            if evt.type == 'PathOut':
-                pathouts.add(evt.value)
-            elif evt.type == 'PathIn':
-                pathins.add(evt.value)
-        self._pathins = tuple(sorted(pathins))
-        self._pathouts = tuple(sorted(pathouts))
+            if isinstance(evt, walkproto.PathOut):
+                pouts.add(evt.value)
+            elif isinstance(evt, walkproto.PathIn):
+                pins.add(evt.value)
+        self._pathins: ty.Tuple[nodeop.PathIn, ...] = tuple(sorted(pins))
+        self._pathouts: ty.Tuple[nodeop.PathOut, ...] = tuple(sorted(pouts))
 
         self.__parent = parent
 
         if self.__parent:
-            self.__parent._Graph__add_node(self)
+            self.__parent._Graph__add_node(self) # type: ignore[attr-defined]
         else:
             # Validate things if node is outside of a graph
             if self._name:
@@ -77,16 +78,19 @@ class Node(typing.Generic[T]):
             if self._pathins:
                 raise ValueError('pathins are only allowed inside a graph')
 
-    def _fullname(self) -> str:
+    def _fullname(self) -> ty.Optional[str]:
         if not self._name:
             return None
 
         stack = [self._name]
         g = self.__parent
-        root = self.__parent._Graph__root
-        while g != root:
+        if g:
+            root: Graph = g._Graph__root # type: ignore[attr-defined]
+        while g and g != root:
+            if g.name is None:
+                raise ValueError('one of the parent graphs has no name')
             stack.append(g.name)
-            g = g._Graph__parent
+            g = g._Graph__parent # type: ignore[attr-defined]
         return '/'.join(reversed(stack))
 
     def _set(self, value):
@@ -105,21 +109,24 @@ class Node(typing.Generic[T]):
             return True
         return not nodestate.get_state(self).is_up_to_date()
 
-    def __op_walk(self, op: nodeop.NodeOp = None) -> ty.Generator[walkproto.Event]:
+    def __op_walk(self, op: nodeop.NodeOp = None,
+                  ) -> ty.Generator[walkproto.Event, None, None]:
         if not op:
             op = self._op
         yield from walkproto.walk(op)
 
-    def _get_dep_nodes(self) -> ty.Generator[Node]:
+    def _get_dep_nodes(self) -> ty.Generator[Node, None, None]:
         for evt in self.__op_walk():
-            if evt.type == 'Node':
+            if isinstance(evt, walkproto.Node):
+                assert evt.value is not None
                 yield evt.value
         for p in self._pathins:
-            dep = self.__parent.path_producer(p)
-            if dep:
-                yield dep
+            if self.__parent is not None:
+                dep = self.__parent.path_producer(pathlib.Path(p))
+                if dep:
+                    yield dep
 
-    def _get_node_descriptor(self) -> ty.Tuple[walkproto.Event]:
+    def _get_node_descriptor(self) -> walkproto.NodeDescriptor:
         return walkproto.node_descriptor(self)
 
     def __getitem__(self, key) -> Node:
@@ -161,19 +168,19 @@ class Graph:
             elif not no_parent:
                 parent = _global_graph
 
-        self.name = name
+        self.name: ty.Optional[str] = name
         self.__in_build_context = False
-        self.__nodes = []
+        self.__nodes: ty.List[Node] = []
         self.__parent = parent
-        self.__root = parent.__root if parent else self
-        self.__graphs = []
+        self.__root: Graph = parent.__root if parent else self
+        self.__graphs: ty.List[Graph] = []
 
-        self.__name2node = {}
+        self.__name2node: ty.Dict[str, ty.Union[Node, Graph]] = {}
         """
         A dictionary mapping strings to either `Node` or `Graph` instances.
         """
 
-        self.__pathout2node = {}
+        self.__pathout2node: ty.Dict[nodeop.PathOut, Node] = {}
         """
         A dictionary mapping `nodeop.PathOut` instances to nodes that declare
         to produce them. This object should not be consulted directly, use the
@@ -198,7 +205,11 @@ class Graph:
         stack = []
         g = self
         while g != self.__root:
+            if g.name is None:
+                msg = 'one of the graphs in the hierarchy has no name'
+                raise ValueError(msg)
             stack.append(g.name)
+            assert g.__parent is not None
             g = g.__parent
         return '/'.join(reversed(stack))
 
@@ -217,7 +228,7 @@ class Graph:
 
     def node(self, path: NodeName) -> ty.Union[Node, Graph]:
         if isinstance(path, str):
-            parts = path.split('/')
+            parts = tuple(path.split('/'))
         else:
             parts = tuple(path)
 
@@ -232,36 +243,37 @@ class Graph:
             if graph_name not in cur_graph.__name2node:
                 partial_path = parts[:i]
                 raise KeyError(f'graph at {partial_path!r} does not contain a child named {graph_name!r}')
-            cur_graph = cur_graph.__name2node[graph_name]
-            if not isinstance(cur_graph, Graph):
+            next_graph = cur_graph.__name2node[graph_name]
+            if not isinstance(next_graph, Graph):
                 partial_path = parts[:i+1]
                 raise KeyError(f'element at {partial_path!r} is not a graph')
+            cur_graph = next_graph
 
         if node_name not in cur_graph.__name2node:
             raise KeyError(f'graph at {graph_names!r} does not contain a node named {node_name!r}')
 
         return cur_graph.__name2node[node_name]
 
-    def recurse_nodes(self) -> ty.Generator[Node]:
+    def recurse_nodes(self) -> ty.Generator[Node, None, None]:
         yield from self.__nodes
         for g in self.__graphs:
             yield from g.recurse_nodes()
 
-    def path_producer(self, path: pathlib.Path) -> Node:
+    def path_producer(self, path: pathlib.Path) -> ty.Optional[Node]:
         """
         Return the node that declares to produce the path `path` or None if there
         is no such node.
         """
-        path = nodeop.PathOut(path)
-        if path in self.__root.__pathout2node:
-            return self.__root.__pathout2node[path]
-        return _global_graph.__pathout2node.get(path)
+        p = nodeop.PathOut(path)
+        if p in self.__root.__pathout2node:
+            return self.__root.__pathout2node[p]
+        return _global_graph.__pathout2node.get(p)
 
     def mingraph(self,
                  unbounds: util.TargetsSpec,
                  targets: util.TargetsSpec,
                  ) -> Graph:
-        return mingraph.mingraph(unbounds, targets, graph=self)
+        return mingraphmod.mingraph(unbounds, targets, graph=self)
 
     def __add_graph(self, graph: Graph):
         if not graph.name:
@@ -295,7 +307,7 @@ class Graph:
         self.__name2node[node._name] = node
 
         for p in node._pathouts:
-            if self.path_producer(p):
+            if self.path_producer(pathlib.Path(p)):
                 msg = f'found multiple nodes declaring to produce {p}'
                 raise ValueError(msg)
             self.__root.__pathout2node[p] = node
@@ -313,5 +325,5 @@ class CustomPickler(pickle.Pickler):
             logger.warning(msg)
         return NotImplemented
 
-_graph_build_stack = []
+_graph_build_stack: ty.List[Graph] = []
 _global_graph = Graph(no_parent=True)

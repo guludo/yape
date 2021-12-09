@@ -18,119 +18,165 @@ from . import (
     ty,
 )
 
-
-_event_types = []
-
-def event_type(name: str, *fields: ty.Tuple[str]) -> type[collections.namedtuple]:
-    """
-    A factory function for creating types.
-
-    The resulting type is a namedtuple with "type" as the first field name and
-    `fields` as the remaining field names. When creating a new instance of the
-    named tuple, the value of the first field will automatically be set to
-    `name`.
-
-    The rationale behind such a behavior is that, since
-    `Node._get_node_descriptor()` is intended to be used as a way of uniquely
-    identifying the node, it is important emit the type of the event together
-    with its arguments.
-    """
-    fields = ('type', *fields)
-    base = collections.namedtuple(name, fields)
-
-    def __new__(cls, *k, **kw):
-        k = (name, *k)
-        return base.__new__(cls, *k, **kw)
-
-    def __getnewargs__(self):
-        return self[1:]
-
-    namespace = {
-        '__new__': __new__,
-        '__getnewargs__': __getnewargs__,
-    }
-
-    t = type(name, (base,), namespace)
-    _event_types.append(t)
-    return t
-
-
 # The types below are used by `Node._op_walk()` and
 # `Node._get_node_descriptor()`
-ValueId = event_type('ValueId', 'id')
-Ref = event_type('Ref', 'id')
-OpType = event_type('OpType', 'value')
-DataOp = event_type('DataOp', 'value')
-PathOut = event_type('PathOut', 'value')
-PathIn = event_type('PathIn', 'value')
-Node = event_type('Node', 'value')
-CTX = event_type('CTX')
-UNSET = event_type('UNSET')
-Tuple = event_type('Tuple', 'size')
-List = event_type('List', 'size')
-Dict = event_type('Dict', 'keys')
-Other = event_type('Other', 'value')
+class ValueId(ty.NamedTuple):
+    type: str
+    id: int
+
+class Ref(ty.NamedTuple):
+    type: str
+    id: int
+
+class OpType(ty.NamedTuple):
+    type: str
+    value: ty.Type[nodeop.NodeOp]
+
+class DataOp(ty.NamedTuple):
+    type: str
+    value: nodeop.NodeOp
+
+class PathOut(ty.NamedTuple):
+    type: str
+    value: nodeop.PathOut
+
+class PathIn(ty.NamedTuple):
+    type: str
+    value: nodeop.PathIn
+
+class Node(ty.NamedTuple):
+    type: str
+    value: ty.Union[gn.Node, None]
+
+class CTX(ty.NamedTuple):
+    type: str
+
+class UNSET(ty.NamedTuple):
+    type: str
+
+class Tuple(ty.NamedTuple):
+    type: str
+    size: int
+
+class List(ty.NamedTuple):
+    type: str
+    size: int
+
+class Dict(ty.NamedTuple):
+    type: str
+    keys: tuple
+
+class Other(ty.NamedTuple):
+    type: str
+    value: ty.Any
 
 
 # The types below are used by `Node._get_node_descriptor()`
-OpTypeDescriptor = event_type('OpTypeDescriptor', 'name')
-CallableDescriptor = event_type('CallableDescriptor', 'source')
-PathinsDescriptor = event_type('PathinsDescriptor', 'paths')
-PathoutsDescriptor = event_type('PathoutsDescriptor', 'paths')
+class OpTypeDescriptor(ty.NamedTuple):
+    type: str
+    name: str
+
+class CallableDescriptor(ty.NamedTuple):
+    type: str
+    source: str
+
+class PathinsDescriptor(ty.NamedTuple):
+    type: str
+    paths: ty.Tuple[nodeop.PathIn]
+
+class PathoutsDescriptor(ty.NamedTuple):
+    type: str
+    paths: ty.Tuple[nodeop.PathIn]
 
 
 # Define Event as the Union of all event types
-Event = ty.Union[tuple(_event_types)]
+Event = ty.Union[
+    ValueId,
+    Ref,
+    OpType,
+    DataOp,
+    PathOut,
+    PathIn,
+    Node,
+    CTX,
+    UNSET,
+    Tuple,
+    List,
+    Dict,
+    Other,
+    OpTypeDescriptor,
+    CallableDescriptor,
+    PathinsDescriptor,
+    PathoutsDescriptor,
+]
+
+
+_EvtT = ty.TypeVar('_EvtT', bound=Event)
+def _event(cls: ty.Callable[..., _EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
+    return cls(cls.__name__, *k, **kw)
 
 
 def walk(op: nodeop.NodeOp):
-    refs = {}
-    yield OpType(type(op))
+    refs: ty.Dict[int, int] = {}
+    yield _event(OpType, type(op))
     if isinstance(op, nodeop.Data):
-        yield DataOp(op)
+        yield _event(DataOp, op)
     else:
         for v in op:
             yield from walk_value(v, refs)
 
 
-def walk_value(value: ty.Any, refs: dict) -> ty.Generator[Event]:
+def walk_value(value: ty.Any,
+               refs: ty.Dict[int, int],
+               ) -> ty.Generator[Event, None, None]:
     if id(value) in refs:
-        yield Ref(refs[id(value)])
+        yield _event(Ref, refs[id(value)])
         return
 
     refs[id(value)] = len(refs)
-    yield ValueId(refs[id(value)])
+    yield _event(ValueId, refs[id(value)])
 
     if isinstance(value, nodeop.PathOut):
-        yield PathOut(value)
+        yield _event(PathOut, value)
     elif isinstance(value, nodeop.PathIn):
-        yield PathIn(value)
+        yield _event(PathIn, value)
     elif isinstance(value, gn.Node):
-        yield Node(value)
+        yield _event(Node, value)
     elif value is nodeop.CTX:
-        yield CTX()
+        yield _event(CTX)
     elif value is nodeop.UNSET:
-        yield UNSET()
+        yield _event(UNSET)
     elif type(value) == list:
-        yield List(size=len(value))
+        yield _event(List, size=len(value))
         for v in value:
             yield from walk_value(v, refs)
     elif type(value) == tuple:
-        yield Tuple(size=len(value))
+        yield _event(Tuple, size=len(value))
         for v in value:
             yield from walk_value(v, refs)
     elif type(value) == dict:
         keys = tuple(value)
-        yield Dict(keys=keys)
+        yield _event(Dict, keys=keys)
         for k in keys:
             yield from walk_value(value[k], refs)
     else:
-        yield Other(value)
+        yield _event(Other, value)
+
+
+# NOTE:
+# The correct definition for the type below would be::
+#
+#   NodeDescriptor = ty.Tuple[ty.Union[Event, 'NodeDescriptor'], ...]
+#
+# However, mypy does not support that yet:
+# https://github.com/python/mypy/issues/731
+# TODO: use the correct definition when that is fixed.
+NodeDescriptor = ty.Tuple[ty.Union[Event, ty.Any], ...]
 
 
 def node_descriptor(node: gn.Node,
-                    cache: ty.Dict[gn.Node, ty.Tuple[Event]] = None,
-                    ) -> ty.Tuple[Event]:
+                    cache: ty.Dict[gn.Node, NodeDescriptor] = None,
+                    ) -> NodeDescriptor:
     if (cache is not None
             and not isinstance(node._op, nodeop.Value)
             and node in cache):
@@ -145,12 +191,13 @@ def node_descriptor(node: gn.Node,
         if op.id:
             op = op._replace(payload=None)
 
-    desc = []
+    desc: ty.List[ty.Union[Event, NodeDescriptor]] = []
 
-    desc.append(PathinsDescriptor(node._pathins))
-    desc.append(PathoutsDescriptor(node._pathouts))
+    desc.append(_event(PathinsDescriptor, node._pathins))
+    desc.append(_event(PathoutsDescriptor, node._pathouts))
     for evt in walk(op):
         if isinstance(evt, Node):
+            assert isinstance(evt.value, gn.Node)
             n = evt.value
             evt = evt._replace(value=None)
             desc.append(evt)
@@ -159,7 +206,8 @@ def node_descriptor(node: gn.Node,
               and callable(evt.value)
               and not inspect.isbuiltin(evt.value)):
             fn = evt.value
-            desc.append(CallableDescriptor(
+            desc.append(_event(
+                CallableDescriptor,
                 # NOTE: It would be nice if we could add information from the
                 # function's closure and default arguments as well. An issue
                 # with that is that it will be common for some unpickable
@@ -168,10 +216,10 @@ def node_descriptor(node: gn.Node,
             ))
         else:
             desc.append(evt)
-    desc = tuple(desc)
+    desc_tuple: NodeDescriptor = tuple(desc)
     if cache is not None and not isinstance(node._op, nodeop.Value):
-        cache[node] = desc
-    return desc
+        cache[node] = desc_tuple
+    return desc_tuple
 
 
 def resolve_op(op: nodeop.NodeOp,
@@ -182,7 +230,7 @@ def resolve_op(op: nodeop.NodeOp,
 
 
 class _UNRESOLVED:
-    __slots__ = []
+    __slots__: ty.List[str] = []
 
     singleton = None
 
@@ -209,7 +257,7 @@ class OpResolver:
                  ):
         self.__ctx = ctx
         self.__op = op
-        self.__cache = {}
+        self.__cache: ty.Dict[int, ty.Any] = {}
         self.custom_atom_resolver = custom_atom_resolver
 
     def resolve(self):
@@ -233,6 +281,8 @@ class OpResolver:
 
         # Otherwise, evt will be a ValueId
         value_id = evt.id
+
+        resolved: ty.Any
 
         # Now get the next event, which describes the value
         evt = next(self.__events)

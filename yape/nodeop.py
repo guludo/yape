@@ -9,26 +9,32 @@ import pathlib
 from . import ty
 
 
-_op_types = []
-def op_namedtuple(type_name, *names, **kw):
-    t = collections.namedtuple(type_name, names, **kw)
-    _op_types.append(t)
-    return t
+class Data(ty.NamedTuple):
+    payload: ty.Any
+    id: ty.Optional[str]
 
 
-Data = op_namedtuple('Data', 'payload', 'id')
+class Value(ty.NamedTuple):
+    value: ty.Any
 
 
-Value = op_namedtuple('Value', 'value')
+class GetItem(ty.NamedTuple):
+    obj: ty.Any
+    key: str
 
 
-GetItem = op_namedtuple('GetItem', 'obj', 'key')
+class GetAttr(ty.NamedTuple):
+    obj: ty.Any
+    name: str
 
 
-GetAttr = op_namedtuple('GetAttr', 'obj', 'name')
+class Call(ty.NamedTuple):
+    fn: ty.Callable
+    args: ty.Sequence
+    kwargs: ty.Mapping
 
 
-Call = op_namedtuple('Call', 'fn', 'args', 'kwargs')
+NodeOp = ty.Union[Data, Value, GetItem, GetAttr, Call]
 
 
 class PathIn(pathlib.PurePosixPath):
@@ -40,7 +46,7 @@ class PathOut(pathlib.PurePosixPath):
 
 
 class _CTX:
-    __slots__ = []
+    __slots__: ty.List[str] = []
 
     singleton = None
 
@@ -55,7 +61,7 @@ CTX = _CTX()
 
 
 class _UNSET:
-    __slots__ = []
+    __slots__: ty.List[str] = []
 
     singleton = None
 
@@ -68,9 +74,6 @@ class _UNSET:
 
 
 UNSET = _UNSET()
-
-
-NodeOp = ty.Union[tuple(_op_types)]
 
 
 def run_op(op):

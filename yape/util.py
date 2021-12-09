@@ -13,12 +13,15 @@ from . import (
 
 def topological_sort(target_nodes: ty.Iterable[gn.Node],
                      ) -> ty.Tuple[ty.List[gn.Node], collections.Counter]:
-    visited = set()
-    visiting = set()
-    sorted_nodes = []
-    path = []
+    visited: ty.Set[gn.Node] = set()
+    visiting: ty.Set[gn.Node] = set()
+    sorted_nodes: ty.List[gn.Node] = []
+    path: ty.List[gn.Node] = []
+    dependant_counts: collections.Counter[gn.Node] = collections.Counter()
+
+    stack: ty.List[ty.Tuple[gn.Node, ty.Union[None, ty.List[gn.Node]]]]
     stack = [(node, None) for node in target_nodes]
-    dependant_counts = collections.Counter()
+
     while stack:
         node, state = stack.pop()
 
@@ -73,15 +76,15 @@ TargetsSpec = ty.Union[
 
 ParsedTargetsSpec = ty.Union[
     'gn.Node',
-    ty.Tuple['gn.Node'],
-    ty.Dict[str, 'gn.NodeRef'],
+    ty.Tuple['gn.Node', ...],
+    ty.Dict[str, 'gn.Node'],
 ]
 
 
-def parse_targets(targets: TargetsSpec,
+def parse_targets(targets: ty.Optional[TargetsSpec],
                   graph: gn.Graph = None,
                   no_global_graph: bool = False,
-                  ) -> ty.Tuple[ty.Set[fn.Node], ParsedTargetsSpec]:
+                  ) -> ty.Tuple[ty.Set[gn.Node], ParsedTargetsSpec]:
     if not graph and not no_global_graph:
         graph = gn._global_graph
     if targets is None:
