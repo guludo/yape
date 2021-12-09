@@ -19,7 +19,7 @@ setuptools.setup(
         ],
     },
     install_requires=[
-        'argparse-subdec~=0.1.0',
+        'argparse-subdec>=0.2.1<1.0',
     ],
     extras_require={
         'dev': [
