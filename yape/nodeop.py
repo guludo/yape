@@ -9,25 +9,64 @@ import pathlib
 from . import ty
 
 
+# NodeOp types
+# ============
+#
+# A NodeOp class must be defined as a class that:
+#
+#   (1) Is decorated with ``_nodeop_cls``.
+#   (2) Inherits from ``ty.NamedTuple``.
+#   (3) Is present as member of the type union ``NodeOp``.
+#
+# For example, we can define the event class `A` as follows::
+#
+##   @_nodeop_cls # (1)
+##   class A(ty.NamedTuple): # (2)
+##       ... # Tuple fields
+##
+##   ... # Other classes
+##
+##   NodeOp = ty.Union[..., A, ...] # (3)
+#
+# Note: using ## above to make mypy happy.
+
+# _NODE_OP_CLS, _nodeop_classes and _nodeop_cls are used as a mechanism to the
+# enforce the conditions for nodeop types.
+_NODE_OP_CLS = ty.TypeVar('_NODE_OP_CLS', bound=ty.NamedTuple)
+_nodeop_classes = []
+def _nodeop_cls(cls: _NODE_OP_CLS) -> _NODE_OP_CLS:
+    """
+    This decorator must be used for every class to be defined as an nodeop
+    type.
+    """
+    _nodeop_classes.append(cls)
+    return cls
+
+
+@_nodeop_cls
 class Data(ty.NamedTuple):
     payload: ty.Any
     id: ty.Optional[str]
 
 
+@_nodeop_cls
 class Value(ty.NamedTuple):
     value: ty.Any
 
 
+@_nodeop_cls
 class GetItem(ty.NamedTuple):
     obj: ty.Any
     key: ty.Any
 
 
+@_nodeop_cls
 class GetAttr(ty.NamedTuple):
     obj: ty.Any
     name: str
 
 
+@_nodeop_cls
 class Call(ty.NamedTuple):
     fn: ty.Callable[..., ty.Any]
     args: ty.Sequence[ty.Any]
@@ -35,6 +74,8 @@ class Call(ty.NamedTuple):
 
 
 NodeOp = ty.Union[Data, Value, GetItem, GetAttr, Call]
+# Let's make sure NodeOp union covers all of them
+assert set(_nodeop_classes) == set(ty.get_args(NodeOp))
 
 
 class PathIn(pathlib.PurePosixPath):
