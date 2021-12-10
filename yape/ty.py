@@ -25,5 +25,6 @@ from typing import (
     Type as Type,
     Union as Union,
     cast as cast,
+    get_args as get_args,
     overload as overload,
 )
