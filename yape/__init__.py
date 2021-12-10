@@ -65,7 +65,7 @@ def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
 
 
 # TODO: use ParamSpec instead of ... for callables once that is supported in
-# pytype.
+# mypy.
 @ty.overload
 def gr(nodegen: ty.Callable[..., ty.Any],
        /,
