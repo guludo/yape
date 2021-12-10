@@ -112,7 +112,6 @@ Event = ty.Union[
 
 
 _EvtT = ty.TypeVar('_EvtT', bound=Event)
-#def _event(cls: ty.Callable[..., _EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
 def _event(cls: ty.Type[_EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
     return ty.cast(ty.Callable[..., _EvtT], cls)(cls.__name__, *k, **kw)
 
