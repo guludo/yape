@@ -2,7 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 """
-Utility module to group commonly used types for type annotation.
+Utility module to contain common typing-related utilities. Members of the
+typing module should be exported by this module and be used as this module's
+attributes. This allows some eventual API incompatibilities between Python
+versions to be treated in a single place.
 """
 from typing import (
     Any as Any,
