@@ -18,72 +18,142 @@ from . import (
     ty,
 )
 
-# The types below are used by `Node._op_walk()` and
-# `Node._get_node_descriptor()`
+
+# Event types
+# ===========
+#
+# An event class must be defined as a class that:
+#
+#   (1) Is decorated with ``_evt_cls``.
+#   (2) Inherits from ``ty.NamedTuple``.
+#   (3) Has 'type' as the first field, which must be annotated as a ``str``.
+#   (4) Is present as member of the type union ``Event``.
+#
+# For example, we can define the event class `A` as follows::
+#
+##   @_evt_cls # (1)
+##   class A(ty.NamedTuple): # (2)
+##       type: str # (3)
+##       ... # Other fields here
+##
+##   ... # Other classes
+##
+##   Event = ty.Union[..., A, ...] # (4)
+#
+# Note: using ## above to make mypy happy.
+
+# _EVT_CLS, _evt_classes and _evt_cls are used as a mechanism to enforce the
+# conditions for event types.
+_EVT_CLS = ty.TypeVar('_EVT_CLS', bound=ty.NamedTuple)
+_evt_classes = []
+def _evt_cls(cls: _EVT_CLS) -> _EVT_CLS:
+    # Check that the named tuple has 'type' as the first field
+    assert cls._fields[0] == 'type'
+    _evt_classes.append(cls)
+    return cls
+
+
+# Event types for ``Node._op_walk()`` and ``Node._get_node_descriptor()``
+# =======================================================================
+
+@_evt_cls
 class ValueId(ty.NamedTuple):
     type: str
     id: int
 
+
+@_evt_cls
 class Ref(ty.NamedTuple):
     type: str
     id: int
 
+
+@_evt_cls
 class OpType(ty.NamedTuple):
     type: str
     value: ty.Type[nodeop.NodeOp]
 
+
+@_evt_cls
 class DataOp(ty.NamedTuple):
     type: str
     value: nodeop.NodeOp
 
+
+@_evt_cls
 class PathOut(ty.NamedTuple):
     type: str
     value: nodeop.PathOut
 
+
+@_evt_cls
 class PathIn(ty.NamedTuple):
     type: str
     value: nodeop.PathIn
 
+
+@_evt_cls
 class Node(ty.NamedTuple):
     type: str
     value: ty.Union[gn.Node[ty.Any], None]
 
+
+@_evt_cls
 class CTX(ty.NamedTuple):
     type: str
 
+
+@_evt_cls
 class UNSET(ty.NamedTuple):
     type: str
 
+
+@_evt_cls
 class Tuple(ty.NamedTuple):
     type: str
     size: int
 
+
+@_evt_cls
 class List(ty.NamedTuple):
     type: str
     size: int
 
+
+@_evt_cls
 class Dict(ty.NamedTuple):
     type: str
     keys: ty.Tuple[ty.Any, ...]
 
+
+@_evt_cls
 class Other(ty.NamedTuple):
     type: str
     value: ty.Any
 
 
-# The types below are used by `Node._get_node_descriptor()`
+# Event types for ``Node._get_node_descriptor()`` only
+# ====================================================
+
+@_evt_cls
 class OpTypeDescriptor(ty.NamedTuple):
     type: str
     name: str
 
+
+@_evt_cls
 class CallableDescriptor(ty.NamedTuple):
     type: str
     source: str
 
+
+@_evt_cls
 class PathinsDescriptor(ty.NamedTuple):
     type: str
     paths: ty.Tuple[nodeop.PathIn]
 
+
+@_evt_cls
 class PathoutsDescriptor(ty.NamedTuple):
     type: str
     paths: ty.Tuple[nodeop.PathIn]
@@ -109,12 +179,17 @@ Event = ty.Union[
     PathinsDescriptor,
     PathoutsDescriptor,
 ]
+# Let's make sure Event union covers all of them
+assert set(_evt_classes) == set(ty.get_args(Event))
 
 
 _EvtT = ty.TypeVar('_EvtT', bound=Event)
 def _event(cls: ty.Type[_EvtT], *k: ty.Any, **kw: ty.Any) -> _EvtT:
     return ty.cast(ty.Callable[..., _EvtT], cls)(cls.__name__, *k, **kw)
 
+
+# Functions provided by the module
+# ================================
 
 def walk(op: nodeop.NodeOp) -> ty.Generator[Event, None, None]:
     refs: ty.Dict[int, int] = {}
