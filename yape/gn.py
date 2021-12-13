@@ -134,6 +134,8 @@ class Node(ty.Generic[T]):
 
     def __getattr__(self, name: str) -> Node[ty.Any]:
         if name in ('__getstate__', '__setstate__'):
+            # We need to raise an ``AttributeError`` here so that pickle
+            # understands we do not provide such methods.
             raise AttributeError('__setstate__ and __setstate__ are reserved for pickle')
         if name[0] == '_':
             msg = (
