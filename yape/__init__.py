@@ -21,40 +21,26 @@ T = ty.TypeVar('T')
 
 
 PathIn = nodeop.PathIn
-
-
 PathOut = nodeop.PathOut
-
-
 CTX = nodeop.CTX
-
-
 UNSET = nodeop.UNSET
 
 
 State = nodestate.State
-
-
 CachedState = nodestate.CachedState
-
-
 StateNamespace = nodestate.StateNamespace
-
-
 CachedStateDB = nodestate.CachedStateDB
 
 
 Node = gn.Node
-
-
 Graph = gn.Graph
+
+
+mingraph = mingraphmod.mingraph
 
 
 def graph(**kw: ty.Any) -> gn.Graph:
     return gn.Graph(**kw)
-
-
-mingraph = mingraphmod.mingraph
 
 
 def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
