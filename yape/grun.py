@@ -15,6 +15,7 @@ from . import (
     ty,
     util,
     walkproto,
+    yapecontext,
 )
 
 
@@ -32,9 +33,7 @@ class Runner:
     def run(self,
             targets: ty.Optional[util.TargetsSpec] = None,
             graph: ty.Optional[gn.Graph] = None,
-            ns: ty.Optional[nodestate.StateNamespace] = None,
-            cached: bool = True,
-            cache_path: ty.Union[str, pathlib.Path, None] = None,
+            context: ty.Optional[yapecontext.YapeContext] = None,
             force: bool = False,
             return_results: bool = True,
             ) -> RunResult:
@@ -43,30 +42,26 @@ class Runner:
         # Get nodes to be executed
         nodes_to_run, dependant_counts = util.topological_sort(target_nodes)
 
-        # Get or create the state namespace
-        node_state_ctx: ty.ContextManager[ty.Union[nodestate.StateNamespace,
-                                                   None]]
-        node_state_ctx = contextlib.nullcontext()
-        if not nodestate._current_namespace:
-            if not ns:
-                if cached:
-                    if not cache_path:
-                        cache_path = nodestate.DEFAULT_DB_DIR
-                    db = nodestate.CachedStateDB(cache_path)
-                    ns = nodestate.StateNamespace(db)
-                else:
-                    ns = nodestate.StateNamespace()
-            node_state_ctx = ns
+        ctx: ty.Union[yapecontext.YapeContext, ty.ContextManager[None]]
+        if context is None:
+            if yapecontext._current_context is None:
+                ctx = yapecontext.YapeContext()
+            else:
+                # Let's make this a null context since a context is already in
+                # place.
+                ctx = contextlib.nullcontext()
+        else:
+            ctx = context
 
         return_value: RunResult
         # Run nodes
-        with node_state_ctx:
+        with ctx:
             for node in nodes_to_run:
                 if not node._must_run():
                     if not (force and node in target_nodes):
                         continue
-                ctx = NodeContext(node)
-                resolved_op = walkproto.resolve_op(node._op, ctx)
+                node_ctx = NodeContext(node)
+                resolved_op = walkproto.resolve_op(node._op, node_ctx)
                 for pout in node._pathouts:
                     p = pathlib.Path(pout)
                     if p.parent:

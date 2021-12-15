@@ -14,6 +14,7 @@ from . import (
     nodeop,
     nodestate,
     ty,
+    yapecontext,
 )
 
 
@@ -34,6 +35,9 @@ CachedStateDB = nodestate.CachedStateDB
 
 Node = gn.Node
 Graph = gn.Graph
+
+
+YapeContext = yapecontext.YapeContext
 
 
 mingraph = mingraphmod.mingraph
