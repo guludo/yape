@@ -12,6 +12,7 @@ from . import (
     mingraphmod,
     nodeop,
     nodestate,
+    resmod,
     ty,
     util,
     walkproto,
@@ -57,11 +58,22 @@ class Node(ty.Generic[T]):
 
         pins = set(nodeop.PathIn(p) for p in pathins)
         pouts = set(nodeop.PathOut(p) for p in pathouts)
+
         for evt in self.__op_walk():
             if isinstance(evt, walkproto.PathOut):
                 pouts.add(evt.value)
             elif isinstance(evt, walkproto.PathIn):
                 pins.add(evt.value)
+            elif isinstance(evt, walkproto.ResourceOut):
+                assert evt.value is not None
+                evt.value.node._resource_producers.add(self)
+            elif isinstance(evt, walkproto.Node):
+                assert evt.value is not None
+                if isinstance(evt.value._op, nodeop.Resource):
+                    raise RuntimeError(
+                        'resource nodes can not be used directly. '
+                        'Wrap them with either yape.input() or yape.output().'
+                    )
         self._pathins: ty.Tuple[nodeop.PathIn, ...] = tuple(sorted(pins))
         self._pathouts: ty.Tuple[nodeop.PathOut, ...] = tuple(sorted(pouts))
 
@@ -77,6 +89,14 @@ class Node(ty.Generic[T]):
                 raise ValueError('pathouts are only allowed inside a graph')
             if self._pathins:
                 raise ValueError('pathins are only allowed inside a graph')
+
+        self._resource_producers: ty.Set[Node[ty.Any]] = set()
+        """
+        This attribute is specific for nodes with Resource operators. It is
+        updated by other nodes that declare to produce this resource, i.e.,
+        those that have ``nodeop.ResourceOut(self)`` as part of their
+        arguments.
+        """
 
     def _fullname(self) -> ty.Optional[str]:
         if not self._name:
@@ -102,7 +122,13 @@ class Node(ty.Generic[T]):
         self._set(nodeop.UNSET)
 
     def _result(self) -> T:
-        return nodestate.get_state(self).get_result()
+        state_result = nodestate.get_state(self).get_result()
+        if isinstance(self._op, nodeop.Resource):
+            request = ty.cast(resmod.ResourceRequest[T], self._op.request)
+            provider = resmod.get_provider(request)
+            resource_handle = state_result
+            return provider.resolve(resource_handle)
+        return state_result
 
     def _must_run(self) -> bool:
         if self._always:
@@ -120,6 +146,14 @@ class Node(ty.Generic[T]):
             if isinstance(evt, walkproto.Node):
                 assert evt.value is not None
                 yield evt.value
+            elif isinstance(evt, walkproto.ResourceIn):
+                assert evt.value is not None
+                yield evt.value.node
+                yield from evt.value.node._resource_producers
+            elif isinstance(evt, walkproto.ResourceOut):
+                assert evt.value is not None
+                yield evt.value.node
+
         for p in self._pathins:
             if self.__parent is not None:
                 dep = self.__parent.path_producer(pathlib.Path(p))

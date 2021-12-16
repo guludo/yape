@@ -6,7 +6,14 @@ from __future__ import annotations
 import collections
 import pathlib
 
-from . import ty
+from . import (
+    gn,
+    resmod,
+    ty,
+)
+
+
+NODE_T = ty.TypeVar('NODE_T', bound='gn.Node[ty.Any]')
 
 
 # NodeOp types
@@ -73,7 +80,13 @@ class Call(ty.NamedTuple):
     kwargs: ty.Mapping[str, ty.Any]
 
 
-NodeOp = ty.Union[Data, Value, GetItem, GetAttr, Call]
+@_nodeop_cls
+class Resource(ty.NamedTuple):
+    request: resmod.ResourceRequest[ty.Any]
+    handle: ty.Optional[ty.Any]
+
+
+NodeOp = ty.Union[Data, Value, GetItem, GetAttr, Call, Resource]
 # Let's make sure NodeOp union covers all of them
 assert set(_nodeop_classes) == set(ty.get_args(NodeOp))
 
@@ -84,6 +97,22 @@ class PathIn(pathlib.PurePosixPath):
 
 class PathOut(pathlib.PurePosixPath):
     pass
+
+
+class ResourceIn(ty.Generic[NODE_T]):
+    def __init__(self, node: NODE_T):
+        if not isinstance(node._op, Resource):
+            msg = f'invalid node type: node._op type must be a Resource op'
+            raise TypeError(msg)
+        self.node = node
+
+
+class ResourceOut(ty.Generic[NODE_T]):
+    def __init__(self, node: NODE_T):
+        if not isinstance(node._op, Resource):
+            msg = f'invalid node type: node._op type must be a Resource op'
+            raise TypeError(msg)
+        self.node = node
 
 
 class _CTX:
@@ -128,5 +157,7 @@ def run_op(op: NodeOp) -> ty.Any:
         return getattr(op.obj, op.name)
     elif isinstance(op, Call):
         return op.fn(*op.args, **op.kwargs)
+    elif isinstance(op, Resource):
+        return resmod.get_provider(op.request).create(op.request)
     else:
         raise RuntimeError('unhandled operation, this is probably a bug')

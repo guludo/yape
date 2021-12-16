@@ -17,6 +17,8 @@ from . import (
     gn,
     ty,
     walkproto,
+    nodeop,
+    resmod,
 )
 
 
@@ -114,6 +116,13 @@ class CachedState(ty.Generic[T], State[T]):
                 tz=datetime.timezone.utc,
             )
             if pathout_mtime > self.get_timestamp():
+                return False
+
+        # If a resource node, check if the resource still exists
+        if (isinstance(self.node._op, nodeop.Resource) and
+                self.has_result()):
+            provider = resmod.get_provider(self.node._op.request)
+            if not provider.exists(self.get_result()):
                 return False
 
         # Check if nodes this node depends on are up to date (the

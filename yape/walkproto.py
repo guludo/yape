@@ -16,6 +16,7 @@ from . import (
     grun,
     nodeop,
     ty,
+    util,
 )
 
 
@@ -91,6 +92,15 @@ class PathIn(ty.NamedTuple):
     type: str
     value: nodeop.PathIn
 
+@_evt_cls
+class ResourceOut(ty.NamedTuple):
+    type: str
+    value: ty.Optional[nodeop.ResourceOut[ty.Any]]
+
+@_evt_cls
+class ResourceIn(ty.NamedTuple):
+    type: str
+    value: ty.Optional[nodeop.ResourceIn[ty.Any]]
 
 @_evt_cls
 class Node(ty.NamedTuple):
@@ -159,6 +169,23 @@ class PathoutsDescriptor(ty.NamedTuple):
     paths: ty.Tuple[nodeop.PathIn]
 
 
+@_evt_cls
+class ResourceProducersDescriptor(ty.NamedTuple):
+    type: str
+    # NOTE: use should use ``descriptors: ty.Tuple[NodeDescriptor,...]``, but
+    # we would run into cyclic type definitions, which is not currently
+    # supported by mypy (https://github.com/python/mypy/issues/731).
+    descriptors: ty.Tuple[ty.Any, ...]
+
+@_evt_cls
+class ProducedResourceDescriptor(ty.NamedTuple):
+    """
+    This is used as a marker to reference the node representing the resource to
+    be produced.
+    """
+    type: str
+
+
 # Define Event as the Union of all event types
 Event = ty.Union[
     ValueId,
@@ -167,6 +194,8 @@ Event = ty.Union[
     DataOp,
     PathOut,
     PathIn,
+    ResourceOut,
+    ResourceIn,
     Node,
     CTX,
     UNSET,
@@ -178,6 +207,8 @@ Event = ty.Union[
     CallableDescriptor,
     PathinsDescriptor,
     PathoutsDescriptor,
+    ResourceProducersDescriptor,
+    ProducedResourceDescriptor,
 ]
 # Let's make sure Event union covers all of them
 assert set(_evt_classes) == set(ty.get_args(Event))
@@ -215,6 +246,10 @@ def walk_value(value: ty.Any,
         yield _event(PathOut, value)
     elif isinstance(value, nodeop.PathIn):
         yield _event(PathIn, value)
+    elif isinstance(value, nodeop.ResourceOut):
+        yield _event(ResourceOut, value)
+    elif isinstance(value, nodeop.ResourceIn):
+        yield _event(ResourceIn, value)
     elif isinstance(value, gn.Node):
         yield _event(Node, value)
     elif value is nodeop.CTX:
@@ -252,6 +287,8 @@ NodeDescriptor = ty.Tuple[ty.Union[Event, ty.Any], ...]
 def node_descriptor(node: gn.Node[ty.Any],
                     cache: ty.Optional[ty.Dict[gn.Node[ty.Any],
                                                NodeDescriptor]] = None,
+                    *,
+                    _resource_node: ty.Optional[gn.Node[ty.Any]] = None,
                     ) -> NodeDescriptor:
     if (cache is not None
             and not isinstance(node._op, nodeop.Value)
@@ -271,6 +308,17 @@ def node_descriptor(node: gn.Node[ty.Any],
 
     desc.append(_event(PathinsDescriptor, node._pathins))
     desc.append(_event(PathoutsDescriptor, node._pathouts))
+    desc.append(
+        _event(
+            ResourceProducersDescriptor,
+            tuple(
+                util.sorted_with_fallback(
+                    node_descriptor(n, cache, _resource_node=node)
+                    for n in node._resource_producers
+                ),
+            ),
+        ),
+    )
     for evt in walk(op):
         if isinstance(evt, Node):
             assert isinstance(evt.value, gn.Node)
@@ -278,6 +326,20 @@ def node_descriptor(node: gn.Node[ty.Any],
             evt = evt._replace(value=None)
             desc.append(evt)
             desc.append(node_descriptor(n, cache))
+        elif isinstance(evt, (ResourceOut, ResourceIn)):
+            assert evt.value is not None
+            n = evt.value.node
+            desc.append(evt._replace(value=None))
+            if (isinstance(evt, ResourceOut)
+                    and evt.value.node is _resource_node):
+                # When _resource_node is set and is evt.value, that means that
+                # it is the resource for wich a ResourceProducersDescriptor is
+                # being currently created. Instead of entering into an infinite
+                # loop, we use a marker (ProducedResourceDescriptor) to
+                # reference the node representing the resource.
+                desc.append(_event(ProducedResourceDescriptor))
+            else:
+                desc.append(node_descriptor(n, cache))
         elif (isinstance(evt, Other)
               and callable(evt.value)
               and not inspect.isbuiltin(evt.value)):
@@ -398,6 +460,9 @@ class OpResolver:
 
         if isinstance(evt, (PathOut, PathIn)):
             resolved = pathlib.Path(evt.value)
+        elif isinstance(evt, (ResourceOut, ResourceIn)):
+            assert evt.value is not None
+            resolved = evt.value.node._result()
         elif isinstance(evt, Node):
             assert evt.value is not None
             resolved = evt.value._result()
