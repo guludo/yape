@@ -13,6 +13,8 @@ from . import (
     mingraphmod,
     nodeop,
     nodestate,
+    pathprovider,
+    resmod,
     ty,
     yapecontext,
 )
@@ -23,6 +25,8 @@ T = ty.TypeVar('T')
 
 PathIn = nodeop.PathIn
 PathOut = nodeop.PathOut
+ResourceIn = nodeop.ResourceIn
+ResourceOut = nodeop.ResourceOut
 CTX = nodeop.CTX
 UNSET = nodeop.UNSET
 
@@ -31,6 +35,14 @@ State = nodestate.State
 CachedState = nodestate.CachedState
 StateNamespace = nodestate.StateNamespace
 CachedStateDB = nodestate.CachedStateDB
+
+
+ResourceRequest = resmod.ResourceRequest
+ResourceProvider = resmod.ResourceProvider
+
+
+PathRequest = pathprovider.PathRequest
+PathProvider = pathprovider.PathProvider
 
 
 Node = gn.Node
@@ -54,20 +66,48 @@ def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
     return gn.Graph.load(path)
 
 
+@ty.overload
 def input(v: ty.Union[pathlib.PurePath, str],
           *rest: ty.Union[pathlib.PurePath, str],
           ) -> nodeop.PathIn:
+    ...
+@ty.overload
+def input(v: gn.Node[T]) -> nodeop.ResourceIn[gn.Node[T]]:
+    ...
+def input(v: ty.Union[pathlib.PurePath, str, gn.Node[T]],
+          *rest: ty.Union[pathlib.PurePath, str],
+          )-> ty.Union[nodeop.PathIn, nodeop.ResourceIn[gn.Node[T]]]:
     if isinstance(v, (pathlib.PurePath, str)):
         return nodeop.PathIn(v, *rest)
+    elif isinstance(v, gn.Node):
+        if rest:
+            raise ValueError('variadic arguments are allowed only for paths')
+        if not isinstance(v._op, nodeop.Resource):
+            raise ValueError('expected operator to be Resource')
+        return nodeop.ResourceIn(v)
     else:
         raise TypeError('invalid type for v')
 
 
+@ty.overload
 def output(v: ty.Union[pathlib.PurePath, str],
           *rest: ty.Union[pathlib.PurePath, str],
            ) -> nodeop.PathOut:
+    ...
+@ty.overload
+def output(v: gn.Node[T]) -> nodeop.ResourceOut[gn.Node[T]]:
+    ...
+def output(v: ty.Union[pathlib.PurePath, str, gn.Node[T]],
+          *rest: ty.Union[pathlib.PurePath, str],
+           ) -> ty.Union[nodeop.PathOut, nodeop.ResourceOut[gn.Node[T]]]:
     if isinstance(v, (pathlib.PurePath, str)):
         return nodeop.PathOut(v, *rest)
+    elif isinstance(v, gn.Node):
+        if rest:
+            raise ValueError('variadic arguments are allowed only for paths')
+        if not isinstance(v._op, nodeop.Resource):
+            raise ValueError('expected operator to be Resource')
+        return nodeop.ResourceOut(v)
     else:
         raise TypeError('invalid type for v')
 
@@ -185,6 +225,24 @@ def data(payload: T,
          ) -> gn.Node[T]:
     op = nodeop.Data(payload, id)
     return gn.Node(op, **kw)
+
+
+@ty.overload
+def res(request: None = None, /, **kw: ty.Any) -> gn.Node[pathlib.Path]:
+    ...
+@ty.overload
+def res(request: resmod.ResourceRequest[T], /, **kw: ty.Any) -> gn.Node[T]:
+    ...
+def res(request: ty.Optional[resmod.ResourceRequest[T]] = None,
+        /,
+        **kw: ty.Any,
+        ) -> ty.Union[gn.Node[pathlib.Path], gn.Node[T]]:
+    if request is None:
+        op = nodeop.Resource(pathprovider.PathRequest(), None)
+        return ty.cast(gn.Node[pathlib.Path], gn.Node(op, **kw))
+    else:
+        op = nodeop.Resource(request, None)
+        return ty.cast(gn.Node[T], gn.Node(op, **kw))
 
 
 def _cmd_fn(args: ty.Union[str, ty.List[ty.Any], ty.Tuple[ty.Any, ...]],
