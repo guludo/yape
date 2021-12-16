@@ -160,13 +160,13 @@ class CallableDescriptor(ty.NamedTuple):
 @_evt_cls
 class PathinsDescriptor(ty.NamedTuple):
     type: str
-    paths: ty.Tuple[nodeop.PathIn]
+    paths: ty.Tuple[nodeop.PathIn, ...]
 
 
 @_evt_cls
 class PathoutsDescriptor(ty.NamedTuple):
     type: str
-    paths: ty.Tuple[nodeop.PathIn]
+    paths: ty.Tuple[nodeop.PathIn, ...]
 
 
 @_evt_cls
