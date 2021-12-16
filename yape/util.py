@@ -4,11 +4,18 @@
 from __future__ import annotations
 
 import collections
+import logging
 
 from . import (
     gn,
     ty,
 )
+
+
+T = ty.TypeVar('T')
+
+
+logger = logging.getLogger()
 
 
 def topological_sort(target_nodes: ty.Iterable[gn.Node[ty.Any]],
@@ -130,3 +137,86 @@ def parse_targets(targets: ty.Optional[TargetsSpec],
         targets = get_node(targets, graph)
         nodes = {targets}
     return nodes, targets
+
+
+
+class _Comparable(ty.Protocol):
+    def __lt__(self, other: ty.Any) -> bool:
+        ...
+
+
+_ComparableT = ty.TypeVar('_ComparableT', bound=_Comparable)
+
+
+@ty.overload
+def sorted_with_fallback(iterable: ty.Iterable[_ComparableT],
+                         /,
+                         *,
+                         key: None = None,
+                         reverse: bool = False,
+                         fallback: ty.Callable[[ty.Any], _Comparable] = repr,
+                         ) -> ty.List[_ComparableT]:
+    ...
+@ty.overload
+def sorted_with_fallback(iterable: ty.Iterable[T],
+                         /,
+                         *,
+                         key: ty.Callable[[T], _Comparable],
+                         reverse: bool = False,
+                         fallback: ty.Callable[[ty.Any], _Comparable] = repr,
+                         ) -> ty.List[T]:
+    ...
+def sorted_with_fallback(iterable: ty.Iterable[T],
+                         /,
+                         *,
+                         key: ty.Optional[ty.Callable[[T],
+                                                      _Comparable]] = None,
+                         reverse: bool = False,
+                         fallback: ty.Callable[[ty.Any], _Comparable] = repr,
+                          ) -> ty.List[T]:
+    """
+    Call ``sorted(iterable, key, reverse)`` using ``fallback`` to convert items
+    if a type error occurs when comparing them.
+
+    This is useful if there is no assurance that the items to be compared
+    (either items from the iterable or the return of ``key``) can not be
+    compared. When items ``a < b`` yields a ``TypeError``, ``fallback(a) <
+    fallback(b)`` is used. The default value of ``fallback`` is ``repr``.
+
+    For example, sorting ``[(1, 2), (1, None)]`` would result in an error::
+
+    >>> sorted([(1, None), (1, 2)])
+    Traceback (most recent call last):
+      ...
+    TypeError: '<' not supported between instances of 'int' and 'NoneType'
+
+    Now, with ``sorted_with_fallback``::
+    >>> sorted_with_fallback([(1, None), (1, 2)])
+    [(1, 2), (1, None)]
+    """
+    class KeyWrapper:
+        warn_sent = False
+        def __init__(self, value: _Comparable):
+            self.__value = value
+
+        def __lt__(self, other: KeyWrapper) -> bool:
+            a, b = self.__value, other.__value
+            try:
+                return bool(a < b)
+            except TypeError:
+                if not KeyWrapper.warn_sent:
+                    logger.warning(
+                        f'failed to compare values {a!r} and {b!r}, '
+                        f'fallback(a) and fallback(b) will be used instead '
+                        f'(also for future occurrences).'
+                    )
+                    KeyWrapper.warn_sent = True
+                return bool(fallback(a) < fallback(b))
+
+    def sort_key(v: T) -> KeyWrapper:
+        if key is not None:
+            return KeyWrapper(key(v))
+        else:
+            return KeyWrapper(ty.cast(_Comparable, v))
+
+    return sorted(iterable, key=sort_key, reverse=reverse)

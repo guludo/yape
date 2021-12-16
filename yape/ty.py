@@ -21,6 +21,7 @@ from typing import (
     NewType as NewType,
     NoReturn as NoReturn,
     Optional as Optional,
+    Protocol as Protocol,
     Sequence as Sequence,
     Set as Set,
     Tuple as Tuple,
