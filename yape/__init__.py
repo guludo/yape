@@ -54,6 +54,24 @@ def load(path: ty.Union[pathlib.Path, str]) -> gn.Graph:
     return gn.Graph.load(path)
 
 
+def input(v: ty.Union[pathlib.PurePath, str],
+          *rest: ty.Union[pathlib.PurePath, str],
+          ) -> nodeop.PathIn:
+    if isinstance(v, (pathlib.PurePath, str)):
+        return nodeop.PathIn(v, *rest)
+    else:
+        raise TypeError('invalid type for v')
+
+
+def output(v: ty.Union[pathlib.PurePath, str],
+          *rest: ty.Union[pathlib.PurePath, str],
+           ) -> nodeop.PathOut:
+    if isinstance(v, (pathlib.PurePath, str)):
+        return nodeop.PathOut(v, *rest)
+    else:
+        raise TypeError('invalid type for v')
+
+
 # TODO: use ParamSpec instead of ... for callables once that is supported in
 # mypy.
 @ty.overload
