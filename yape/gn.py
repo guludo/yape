@@ -296,10 +296,15 @@ class Graph:
 
         return cur_graph.__name2node[node_name]
 
-    def recurse_nodes(self) -> ty.Generator[Node[ty.Any], None, None]:
-        yield from self.__nodes
+    def recurse_nodes(self,
+                      pred: ty.Optional[ty.Callable[[Node[ty.Any]], bool]] = None,
+                      ) -> ty.Generator[Node[ty.Any], None, None]:
+        if pred:
+            yield from (n for n in self.__nodes if pred(n))
+        else:
+            yield from self.__nodes
         for g in self.__graphs:
-            yield from g.recurse_nodes()
+            yield from g.recurse_nodes(pred)
 
     def path_producer(self, path: pathlib.Path) -> ty.Optional[Node[ty.Any]]:
         """
