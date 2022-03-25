@@ -54,6 +54,7 @@ class Node(ty.Generic[T]):
         self._op: nodeop.NodeOp = op
         self._name = name
         self._name_prefix = name_prefix
+        self._has_explicit_name = name is not None
         self._always = always
 
         pins = set(nodeop.PathIn(p) for p in pathins)
