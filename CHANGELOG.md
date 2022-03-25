@@ -18,6 +18,8 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - **BREAKING**: `run()` now uses the parameter `context` now and dropped the
     parameters `ns`, `cached` and `cache_path`. If you used those, you should
     pass a `YapeContext` object using the equivalent parameters.
+- **BREAKING**: `yape list` now only lists nodes that have been explicitly
+  named. The flag `--all` must be used to list all nodes.
 
 
 ## 0.2.1 - 2021-12-02

@@ -129,9 +129,22 @@ class CLI:
 
     @SD.cmd(
         description="""
-        List available targets.
+        List available targets. Only explicitly named targets are listed by
+        default. You can use --all to list all targets.
+        """
+    )
+    @SD.add_argument(
+        '-a', '--all',
+        action='store_true',
+        dest='list_all',
+        help="""
+        List both named and unnamed targets.
         """
     )
     def __cmd_list(self) -> None:
-        for node in self.__graph.recurse_nodes():
+        pred: ty.Optional[ty.Callable[[gn.Node[ty.Any]], bool]] = None
+        if not self.__args.list_all:
+            def pred(node: gn.Node[ty.Any]) -> bool:
+                return node._has_explicit_name
+        for node in self.__graph.recurse_nodes(pred):
             print(node._fullname())
