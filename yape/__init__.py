@@ -3,6 +3,7 @@
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 from __future__ import annotations
 
+import inspect
 import pathlib
 import subprocess
 
@@ -272,6 +273,35 @@ def cmd(args: ty.Union[str, ty.List[ty.Any], ty.Tuple[ty.Any, ...]],
         node_kw['name_prefix'] = name_prefix
 
     return fn(_cmd_fn, args=[args], kwargs=subprocess_run_kw, **node_kw)
+
+
+@ty.overload
+def node(f: ty.Callable[..., T],
+         /,
+         **kw: ty.Any,
+         ) -> gn.Node[T]:
+    ...
+@ty.overload
+def node(f: None = None,
+         /,
+         **kw: ty.Any,
+         ) -> ty.Callable[[ty.Callable[..., T]], gn.Node[T]]:
+    ...
+def node(f: ty.Optional[ty.Callable[..., T]] = None,
+         /,
+         **kw: ty.Any,
+         ) -> ty.Union[gn.Node[T],
+                       ty.Callable[[ty.Callable[..., T]], gn.Node[T]],
+                       ]:
+    def decorator(f: ty.Callable[..., T]) -> gn.Node[T]:
+        sig = inspect.signature(f)
+        bound = sig.bind()
+        bound.apply_defaults()
+        return fn(f, bound.args, bound.kwargs, **kw)
+
+    if f is None:
+        return decorator
+    return decorator(f)
 
 
 def run(*k: ty.Any, **kw: ty.Any) -> grun.RunResult:
