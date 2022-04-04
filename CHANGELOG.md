@@ -14,6 +14,7 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - Implemented framework for resource I/O in nodes. A provider for "path
   resources" was implemented.
 - Added decorator `yape.node`.
+- Caching: modules can now be part of a node descriptor.
 
 ### Changed
 - **BREAKING**: `run()` now uses the parameter `context` now and dropped the

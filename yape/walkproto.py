@@ -10,6 +10,7 @@ from __future__ import annotations
 import collections
 import inspect
 import pathlib
+import types
 
 from . import (
     gn,
@@ -186,6 +187,12 @@ class ProducedResourceDescriptor(ty.NamedTuple):
     type: str
 
 
+@_evt_cls
+class ModuleDescriptor(ty.NamedTuple):
+    type: str
+    name: str
+
+
 # Define Event as the Union of all event types
 Event = ty.Union[
     ValueId,
@@ -209,6 +216,7 @@ Event = ty.Union[
     PathoutsDescriptor,
     ResourceProducersDescriptor,
     ProducedResourceDescriptor,
+    ModuleDescriptor,
 ]
 # Let's make sure Event union covers all of them
 assert set(_evt_classes) == set(ty.get_args(Event))
@@ -352,6 +360,9 @@ def node_descriptor(node: gn.Node[ty.Any],
                 # objects to appear.
                 source=inspect.getsource(fn),
             ))
+        elif isinstance(evt, Other) \
+                and isinstance(evt.value, types.ModuleType):
+            desc.append(_event(ModuleDescriptor, evt.value.__name__))
         else:
             desc.append(evt)
     desc_tuple: NodeDescriptor = tuple(desc)
