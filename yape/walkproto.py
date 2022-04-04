@@ -138,6 +138,12 @@ class Dict(ty.NamedTuple):
 
 
 @_evt_cls
+class Func(ty.NamedTuple):
+    type: str
+    code: types.CodeType
+
+
+@_evt_cls
 class Other(ty.NamedTuple):
     type: str
     value: ty.Any
@@ -150,12 +156,6 @@ class Other(ty.NamedTuple):
 class OpTypeDescriptor(ty.NamedTuple):
     type: str
     name: str
-
-
-@_evt_cls
-class CallableDescriptor(ty.NamedTuple):
-    type: str
-    source: str
 
 
 @_evt_cls
@@ -209,9 +209,9 @@ Event = ty.Union[
     Tuple,
     List,
     Dict,
+    Func,
     Other,
     OpTypeDescriptor,
-    CallableDescriptor,
     PathinsDescriptor,
     PathoutsDescriptor,
     ResourceProducersDescriptor,
@@ -277,6 +277,20 @@ def walk_value(value: ty.Any,
         yield _event(Dict, keys=keys)
         for k in keys:
             yield from walk_value(value[k], refs)
+    elif isinstance(value, types.FunctionType):
+        c = inspect.getclosurevars(value)
+        global_names = tuple(c.globals)
+        nonlocals_tuple = tuple(
+            c.nonlocals[name] for name in value.__code__.co_freevars
+        )
+        yield _event(
+            Func,
+            value.__code__,
+        )
+        yield from walk_value(c.globals, refs)
+        yield from walk_value(nonlocals_tuple, refs)
+        yield from walk_value(value.__defaults__, refs)
+        yield from walk_value(value.__kwdefaults__, refs)
     else:
         yield _event(Other, value)
 
@@ -348,18 +362,6 @@ def node_descriptor(node: gn.Node[ty.Any],
                 desc.append(_event(ProducedResourceDescriptor))
             else:
                 desc.append(node_descriptor(n, cache))
-        elif (isinstance(evt, Other)
-              and callable(evt.value)
-              and not inspect.isbuiltin(evt.value)):
-            fn = evt.value
-            desc.append(_event(
-                CallableDescriptor,
-                # NOTE: It would be nice if we could add information from the
-                # function's closure and default arguments as well. An issue
-                # with that is that it will be common for some unpickable
-                # objects to appear.
-                source=inspect.getsource(fn),
-            ))
         elif isinstance(evt, Other) \
                 and isinstance(evt.value, types.ModuleType):
             desc.append(_event(ModuleDescriptor, evt.value.__name__))
@@ -452,6 +454,28 @@ class OpResolver:
             resolved = {}
             for k in keys:
                 resolved[k] = self.__resolve_value()
+        elif isinstance(evt, Func):
+            resolved_globals = {}
+            resolved_nonlocals = tuple(
+                types.CellType()
+                for _ in evt.code.co_freevars
+            )
+            resolved = types.FunctionType(
+                evt.code,
+                resolved_globals,
+                closure=resolved_nonlocals,
+            )
+
+            # Globals
+            resolved_globals.update(self.__resolve_value())
+            resolved_globals['__builtins__'] = globals()['__builtins__']
+
+            # Nonlocals
+            for i, value in enumerate(self.__resolve_value()):
+                resolved_nonlocals[i].cell_contents = value
+
+            resolved.__defaults__ = self.__resolve_value()
+            resolved.__kwdefaults__ = self.__resolve_value()
         else:
             # XXX: this cast() call should not be necessary, however mypy is
             # giving a strange error, saying that ``evt`` has incompatible
