@@ -20,6 +20,7 @@ setuptools.setup(
     },
     install_requires=[
         'argparse-subdec>=0.2.1<1.0',
+        'dill~=0.3.4',
     ],
     extras_require={
         'dev': [
