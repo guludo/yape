@@ -439,12 +439,11 @@ class OpResolver:
         assert isinstance(evt, ValueId)
         value_id = evt.id
 
-        resolved: ty.Any
-
         # Now get the next event, which describes the value
         evt = next(self.__events)
         if isinstance(evt, (List, Tuple)):
             resolved = [None] * evt.size
+            self.__cache[value_id] = resolved
             for i in range(evt.size):
                 resolved[i] = self.__resolve_value()
             if isinstance(evt, Tuple):
@@ -452,6 +451,7 @@ class OpResolver:
         elif isinstance(evt, Dict):
             keys = evt.keys
             resolved = {}
+            self.__cache[value_id] = resolved
             for k in keys:
                 resolved[k] = self.__resolve_value()
         elif isinstance(evt, Func):
@@ -465,6 +465,7 @@ class OpResolver:
                 resolved_globals,
                 closure=resolved_nonlocals,
             )
+            self.__cache[value_id] = resolved
 
             # Globals
             resolved_globals.update(self.__resolve_value())
@@ -483,8 +484,13 @@ class OpResolver:
             # ``Other`` repeated times in the union list) and that the
             # ``Event`` union was expected.
             resolved = self.__resolve_atom(ty.cast(Event, evt))
+            self.__cache[value_id] = resolved
 
-        self.__cache[value_id] = resolved
+        # Make sure we do not forget setting the cache when defining the
+        # resolved value. Note that the cache can not simply be updated here
+        # because of recursive structures (example: an element of a list point
+        # to the list itself).
+        assert value_id in self.__cache
         return resolved
 
     def __resolve_atom(self, evt: Event) -> ty.Any:

@@ -16,6 +16,7 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - Added decorator `yape.node`.
 - Caching: modules can now be part of a node descriptor.
 - Functions can use nodes directly in their bodies now.
+- Recursive structures are now possible in values.
 
 ### Changed
 - **BREAKING**: `run()` now uses the parameter `context` now and dropped the
