@@ -16,6 +16,7 @@ from . import (
     gn,
     grun,
     ty,
+    util,
 )
 
 
@@ -148,3 +149,26 @@ class CLI:
                 return node._has_explicit_name
         for node in self.__graph.recurse_nodes(pred):
             print(node._fullname())
+
+    @SD.cmd(
+        description="""
+        List dependencies for each node passed as target. All nodes are used as
+        targets by default. You can pass specific targets as positional
+        arguments.
+        """,
+    )
+    @SD.add_argument(
+        'deps_targets',
+        default=None,
+        nargs='*',
+        metavar='TARGET',
+    )
+    def __cmd_deps(self) -> None:
+        targets = getattr(self.__args, 'deps_targets', None)
+        if not targets:
+            targets = None
+        nodes, _ = util.parse_targets(targets, self.__graph)
+        for node in nodes:
+            print(node._fullname())
+            for dep in node._get_dep_nodes():
+                print(f'    {dep._fullname()}')
