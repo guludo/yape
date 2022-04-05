@@ -7,11 +7,12 @@ import datetime
 import hashlib
 import os
 import pathlib
-import pickle
 import shutil
 import tempfile
 import types
 import uuid
+
+import dill as pickle
 
 from . import (
     gn,
