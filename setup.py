@@ -25,6 +25,7 @@ setuptools.setup(
     extras_require={
         'dev': [
             'mypy>=0.910<1.0',
+            'pytest~=7.1.3',
         ],
     },
     classifiers=[
