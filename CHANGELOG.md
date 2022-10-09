@@ -18,6 +18,8 @@ Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to
 - Functions can use nodes directly in their bodies now.
 - Recursive structures are now possible in values.
 - Added new CLI subcommand: `yape deps`.
+- It is possible (and recommended) to define nodes inside a `nodegen()` function
+  in the entrypoint module when running `yape`.
 
 ### Changed
 - **BREAKING**: `run()` now uses the parameter `context` now and dropped the

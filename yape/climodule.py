@@ -88,6 +88,8 @@ class CLI:
             module = importlib.util.module_from_spec(spec)
             loader = ty.cast(importlib.abc.Loader, spec.loader)
             loader.exec_module(module)
+            if hasattr(module, 'nodegen'):
+                module.nodegen()
         finally:
             if sys.path and sys.path[0] == '.':
                 sys.path = sys.path[1:]
