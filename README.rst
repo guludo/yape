@@ -113,3 +113,100 @@ nodes:
    ``nodegen()`` function as the node is already created by ``@yp.node``, but
    you could have a ``nodegen()`` there as well (in case you use a mixture of
    node creation styles).
+
+
+Running
+-------
+
+You can use the command ``yape`` to run your execution graph. Using the example
+from the above:
+
+.. code:: bash
+
+   $ yape
+   Hello, world!
+
+
+Ignoring the cache
+''''''''''''''''''
+
+If you try running it again, you will see that there will be no output:
+
+.. code:: bash
+
+   $ yape
+
+
+That's because the node hasn't changed, so Yape knows it does not have to
+execute it. If we change the node definition or arguments, then Yape will detect
+the change. For example, let's change the argument for our node:
+
+.. code:: python
+
+   import yape as yp
+
+   def hello(who):
+       print(f"Hello, {who}!")
+
+   def nodegen():
+       yp.fn(hello)("my friend")
+
+
+And then run ``yape``:
+
+.. code:: bash
+
+   $ yape
+   Hello, my friend!
+
+
+The command ``yape`` without positional arguments is actually a shortcut for
+``yape run``, which is the sub-command responsible for running the execution
+graph. If you want to force the execution of nodes and ignore the cache, you can
+use the ``-f`` option (short for ``--force``):
+
+.. code:: bash
+
+   $ yape run -f
+   Hello, my friend!
+
+
+Selecting target nodes
+''''''''''''''''''''''
+
+The ``yape run`` sub-command also allows us to select which nodes we want to
+execute. Let's increment our example by defining extra nodes:
+
+.. code:: python
+
+   import yape as yp
+
+   def hello(who):
+       print(f"Hello, {who}!")
+
+   def hi(who):
+       print(f"Hi, {who}!")
+
+   def nodegen():
+       yp.fn(hello)("my friend")
+       yp.fn(hello, name="hello_world")("world")
+       yp.fn(hi)("John Doe")
+
+We created two extra nodes. By default, a functional node will be named after
+the name of the wrapped function. Since the first node already will be named
+"hello", we explicitly define a different name ("hello_world") for the second
+one.
+
+We can select nodes to be run by passing their names (or paths when they belong
+to sub-graphs) as positional arguments:
+
+.. code:: bash
+
+   $ yape run hello_world
+   Hello, world!
+
+.. code:: bash
+
+   $ yape run -f hello hi # Using -f because hello is cached
+   Hi, John Doe!
+   Hello, my friend!
