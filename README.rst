@@ -35,7 +35,7 @@ Install
 
 Yape can be installed via pip:
 
-.. code:: bash
+.. code::
 
     pip install yape
 
@@ -121,7 +121,7 @@ Running
 You can use the command ``yape`` to run your execution graph. Using the example
 from the above:
 
-.. code:: bash
+.. code::
 
    $ yape
    Hello, world!
@@ -132,7 +132,7 @@ Ignoring the cache
 
 If you try running it again, you will see that there will be no output:
 
-.. code:: bash
+.. code::
 
    $ yape
 
@@ -154,7 +154,7 @@ the change. For example, let's change the argument for our node:
 
 And then run ``yape``:
 
-.. code:: bash
+.. code::
 
    $ yape
    Hello, my friend!
@@ -165,7 +165,7 @@ The command ``yape`` without positional arguments is actually a shortcut for
 graph. If you want to force the execution of nodes and ignore the cache, you can
 use the ``-f`` option (short for ``--force``):
 
-.. code:: bash
+.. code::
 
    $ yape run -f
    Hello, my friend!
@@ -200,12 +200,12 @@ one.
 We can select nodes to be run by passing their names (or paths when they belong
 to sub-graphs) as positional arguments:
 
-.. code:: bash
+.. code::
 
    $ yape run hello_world
    Hello, world!
 
-.. code:: bash
+.. code::
 
    $ yape run -f hello hi # Using -f because hello is cached
    Hi, John Doe!
