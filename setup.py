@@ -4,7 +4,7 @@ import setuptools
 
 setuptools.setup(
     name='yape',
-    version='0.2.1',
+    version='0.3.0',
     url='https://github.com/guludo/yape',
     description='Yape - Yet another pipeline executor',
     long_description=(pathlib.Path(__file__).parent / 'README.rst').read_text(),
