@@ -19,12 +19,12 @@ setuptools.setup(
         ],
     },
     install_requires=[
-        'argparse-subdec>=0.2.1<1.0',
+        'argparse-subdec>=0.2.1,<1.0',
         'dill~=0.3.4',
     ],
     extras_require={
         'dev': [
-            'mypy>=0.910<1.0',
+            'mypy>=0.910,<1.0',
             'pytest~=7.1.3',
         ],
     },
